@@ -14,7 +14,7 @@ setup(
     author='Michael Shepanski',
     author_email='michael.shepanski@gmail.com',
     url='https://github.com/pkkid/django-searchquery',
-    packages=['django_querysearch'],
+    packages=['django_searchquery'],
     install_requires=requirements,
     python_requires='>=3.7',
     long_description=readme,
