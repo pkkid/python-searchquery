@@ -1,182 +1,139 @@
 # encoding: utf-8
-import argparse, calendar, datetime, logging, re, shlex, timelib
-from dateutil.relativedelta import relativedelta
-from django.db.models import Q
+import logging
 from functools import reduce
 from pyparsing import ParseResults
-from pyparsing import CaselessKeyword, QuotedString
-from pyparsing import Word, Group
-from pyparsing import alphanums, printables
-from pyparsing import delimitedList, oneOf, infixNotation, opAssoc
-from pyparsing import Suppress, StringEnd, OneOrMore
-from types import SimpleNamespace
+from pyparsing.exceptions import ParseException
+from . import parser, searchfields, utils
+from .exceptions import SearchError
 log = logging.getLogger(__name__)
 
-NONE = ('none', 'null')
-OPERATORS = {'=':'__iexact', '>':'__gt', '>=':'__gte', '<=':'__lte', '<':'__lt', ':': '__icontains'}
-# REVERSEOP = {'__gt':'__lte', '__gte':'__lt', '__lte':'__gt', '__lt':'__gte'}
-# STOPWORDS = ('and', '&&', '&', 'or', '||', '|')
-MONTHNAMES = [m.lower() for m in list(calendar.month_name)[1:] + list(calendar.month_abbr)[1:] + ['sept']]
-DEFAULT_MODIFIER = lambda value: value
 
-FIELDTYPES = SimpleNamespace()
-FIELDTYPES.BOOL = 'bool'
-FIELDTYPES.DATE = 'date'
-FIELDTYPES.NUM = 'numeric'
-FIELDTYPES.STR = 'string'
-
-# PyParse Variables
-AND,OR,IN,NOT = map(CaselessKeyword, 'and or in not'.split())
-NOTIN = CaselessKeyword('not in')
-LISTVALUES = 'listValues'
-SEARCHCOLUMN = 'SearchColumn'
-SEARCHCOLUMNIN = 'SearchColumnIn'
-SEARCHALLCOLUMNS = 'SearchAllColumns'
-MULTIQUERYWITHOP = 'multiQueryWithOp'
-
-
-class UnaryOperator:
-    def __init__(self, tokens):
-        self.operator = tokens[0][0]
-        self.operands = [tokens[0][1]]
-
-class BinaryOperator:
-    def __init__(self, tokens):
-        self.operator = tokens[0][1]
-        self.operands = tokens[0][::2]
-
-
-class SearchError(Exception):
-    pass
-
-
-class SearchField:
-
-    def __init__(self, fieldstr, fieldtype, field, modifier=None, desc=None):
-        self.fieldstr = fieldstr        # field string user should input
-        self.fieldtype = fieldtype      # field type (NUM, STR, ...)
-        self.field = field              # model field lookup (ex: account__first_name)
-        self.modifier = modifier        # callback to modify search_value comparing
-        self.desc = desc                # Human readable description
-        
-    def __str__(self):
-        return '<%s:%s:%s>' % (self.__class__.__name__, self.fieldtype, self.field)
-        
-        
 class Search:
     
-    def __init__(self, basequeryset, fields, searchstr, tzinfo=None):
-        self.errors = []                                # list of errors to display
-        self.basequeryset = basequeryset                # base queryset to filter in Search
-        self.fields = {f.fieldstr:f for f in fields}    # field objects to filter on
-        self.searchstr = searchstr                      # orignal search string
-        self.tzinfo = tzinfo                            # tzinfo for datetime fields
-        self._queryset = None                           # final queryset
+    def __init__(self, basequery, fields, searchstr, tzinfo=None):
+        self.error = None                               # List of errors to display
+        self.basequery = basequery                      # Base queryset to filter in Search
+        self.fields = {f.searchkey:f for f in fields}   # Field objects to filter on
+        self.searchstr = searchstr                      # Orignal search string
+        self.tzinfo = tzinfo                            # TZ info for datetime fields
     
-    @classmethod
-    def parser(cls):
-        """ Returns the PyParse object we'll pass the search string to. """
-        # Basic Value Search (no column specified)
-        basicValue = Word(printables, excludeChars=r'(,) \'"')
-        quoteValue = (QuotedString("'", escChar='\\') | QuotedString('"', escChar='\\'))
-        singleValue = (basicValue | quoteValue)
-        # Column Search (column <op> value)
-        operator = oneOf(OPERATORS.keys())
-        column = Word(alphanums+'_')
-        listValues = delimitedList(singleValue, delim=',').setResultsName(LISTVALUES)
-        listValues = Suppress('(') + Group(listValues) + Suppress(')')
-        # Single Search Query
-        singleQuery = Group(
-            (column + operator + singleValue).setResultsName(SEARCHCOLUMN)
-            | (column + (IN | NOTIN) + listValues).setResultsName(SEARCHCOLUMNIN)
-            | singleValue.setResultsName(SEARCHALLCOLUMNS)
-        )
-        # Mutliple Search Queries (joined by operators)
-        multiQuery = infixNotation(singleQuery, [
-            (NOT, 1, opAssoc.RIGHT, UnaryOperator),
-            (AND, 2, opAssoc.LEFT, BinaryOperator),
-            (OR, 2, opAssoc.LEFT, BinaryOperator),
-        ]).setResultsName(MULTIQUERYWITHOP)
-        return OneOrMore(multiQuery) + StringEnd()
+    def __str__(self):
+        return f'<{self.__class__.__name__}:{self.basequery.model.__name__}>'
 
+    @property
+    def meta(self):
+        """ Returns metadata about this Search object. """
+        result = {}
+        result['fields'] = {k:f.desc for k,f in self.fields.items()}
+        if self.searchstr:
+            result['query'] = self.searchstr or ''
+            # result['filters'] = self.filterstrs
+            if self.error:
+                result['error'] = self.error
+        return result
 
-def is_float(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
+    def queryset(self, node=None, exclude=False):
+        """ Recursivly builds the django queryset. """
+        try:
+            subqueries = []
+            node = node or parser.SearchString.parseString(self.searchstr)
+            if isinstance(node, ParseResults):
+                queryfunc = getattr(self, f'_qs_{node.getName()}')
+                subqueries.append(queryfunc(node, exclude))
+            elif isinstance(node, (parser.UnaryOperator, parser.BinaryOperator)):
+                queryfunc = getattr(self, f'_qs_{node.operator}')
+                subqueries.append(queryfunc(node, exclude))
+            return self._merge_subqueries(subqueries)
+        except ParseException as err:
+            self.error = f"Unknown symbol '{err.line[err.loc]}' at position {err.loc}"
+        except SearchError as err:
+            self.error = str(err)
+        return self.basequery.none()
+        
+    def _get_field(self, searchkey):
+        """ Returns the field object for the given searchkey. """
+        field = self.fields.get(searchkey)
+        if not field:
+            raise SearchError(f"Unknown field '{searchkey}'")
+        return field
+    
+    def _merge_subqueries(self, subqueries, andjoin=True):
+        """ Merge all subqueries into a single query. """
+        # The logic here can be a bit tangled up as the method to join queries
+        # with pretty tightly coupled with exlude. In short, if we are excluding,
+        # we generally want to join with AND (unless were doing a bitwise AND,
+        # then its backwards).
+        if andjoin:
+            return reduce(lambda x,y: x & y, subqueries)
+        return reduce(lambda x,y: x | y, subqueries)
 
+    def _qs_root(self, node, exclude=False):
+        """ Iterate through each subquery. """
+        return self.queryset(node[0], exclude)
+        # subqueries = []
+        # for childnode in node:
+        #     subqueries.append(self.queryset(childnode, exclude))
+        # return reduce(lambda x,y: x & y, subqueries)
+    
+    def _qs_and(self, node, exclude=False):
+        """ Join two queries with AND. """
+        subqueries = []
+        for childnode in node.operands:
+            subqueries.append(self.queryset(childnode, exclude))
+        return self._merge_subqueries(subqueries, not exclude)
+    
+    def _qs_or(self, node, exclude=False):
+        """ Join two queries with AND. """
+        subqueries = []
+        for childnode in node.operands:
+            subqueries.append(self.queryset(childnode, exclude))
+        return self._merge_subqueries(subqueries, exclude)
+    
+    def _qs_not(self, node, exclude=False):
+        """ Join two queries with AND. """
+        subqueries = []
+        exclude = not exclude
+        for childnode in node.operands:
+            print(childnode)
+            subqueries.append(self.queryset(childnode, exclude))
+        return reduce(lambda x,y: x | y, subqueries)
+    
+    def _qs_search_column(self, node, exclude=False):
+        """ Search a specific column for the specified string. """
+        exclude = not exclude if len(node) == 4 else exclude
+        searchkey, operator, valuestr = node[1:] if len(node) == 4 else node
+        field = self._get_field(searchkey)
+        return field.get_subquery(self.basequery, valuestr, operator, exclude)
 
-def is_int(value):
-    try:
-        int(value)
-        return True
-    except ValueError:
-        return False
+    def _qs_search_column_in(self, node, exclude=False):
+        """ Search a specific column contains one of many values. """
+        # Careful! We could have double exclude here.
+        subqueries = []
+        exclude = not exclude if len(node) == 4 else exclude
+        searchkey, operator, valuestrs = node[1:] if len(node) == 4 else node
+        exclude = not exclude if operator == 'not in' else exclude
+        field = self._get_field(searchkey)
+        subquery = self.basequery
+        for valuestr in valuestrs:
+            subquery = field.get_subquery(self.basequery, valuestr, '=', exclude)
+            subqueries.append(subquery)
+        return self._merge_subqueries(subqueries, exclude)
 
-
-def is_month(value):
-    parts = value.lower().split()
-    if len(parts) == 1 and parts[0] in MONTHNAMES:
-        return True
-    elif len(parts) == 2 and is_year(parts[0]) and is_month(parts[1]):
-        return True
-    elif len(parts) == 2 and is_month(parts[0]) and is_year(parts[1]):
-        return True
-    return False
-
-
-def is_year(value):
-    return re.match(r'^20\d\d$', value.lower())
-
-
-def modifier_bool(value):
-    if value.lower() in ('t', 'true', '1', 'y', 'yes'):
-        return True
-    elif value.lower() in ('f', 'false', '0', 'n', 'no'):
-        return False
-    raise SearchError('Invalid bool value: %s' % value)
-
-
-def modifier_numeric(value):
-    if re.match(r'^\-*\d+$', value):
-        return int(value)
-    elif re.match(r'^\-*\d+.\d+$', value):
-        return float(value)
-    raise SearchError('Invalid int value: %s' % value)
-
-
-def modifier_date(value, tzinfo=None):
-    try:
-        value = value.replace('_', ' ')
-        if is_year(value):
-            return datetime.datetime(int(value), 1, 1, tzinfo=tzinfo)
-        dt = timelib.strtodatetime(value.encode('utf8'))
-        return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=tzinfo)
-    except Exception:
-        raise SearchError("Invalid date format: '%s'" % value)
-
-
-def parseNodeTest(node, indent=0):
-    """ Tests the parser with the search string. """
-    indentstr = ' ' * indent
-    if isinstance(node, ParseResults):
-        print(f'{indentstr}{node.getName()}:')
-        for child in node:
-            parseNodeTest(child, indent+2)
-    elif isinstance(node, (UnaryOperator, BinaryOperator)):
-        print(f'{indentstr}{node.operator}:')
-        for child in node.operands:
-            parseNodeTest(child, indent+2)
-    else:
-        print(f'{indentstr}{node}')
-
-
-if __name__ == '__main__':
-    # Test the parser
-    # python search2.py "hello foo not in (bar, baz, 'Honey, dew') AND eat OR (it AND bar) AND foo=bar OR (eatme AND 'soda bar')"
-    parser = argparse.ArgumentParser(description='Test the Search Parser')
-    parser.add_argument('query', help='Search string to test with')
-    searchstr = parser.parse_args().query
-    parseNodeTest(Search.parser().parseString(searchstr))
+    def _qs_search_all_columns(self, node, exclude=False):
+        """ Search all columns for the specified string. """
+        subqueries = []
+        exclude = not exclude if len(node) == 2 else exclude
+        valuestr = node[1] if len(node) == 2 else node[0]
+        # Search string fields
+        strfields = (f for f in self.fields.values() if isinstance(f, searchfields.StrField))
+        for field in strfields:
+            subquery = field.get_subquery(self.basequery, valuestr, ':', exclude)
+            subqueries.append(subquery)
+        # Search all num fields (if applicable)
+        if utils.is_number(valuestr):
+            numvaluestr = ''.join(node)
+            numfields = (f for f in self.fields.values() if isinstance(f, searchfields.NumField))
+            for field in numfields:
+                subquery = field.get_subquery(self.basequery, numvaluestr, ':', exclude)
+                subqueries.append(subquery)
+        return self._merge_subqueries(subqueries, exclude)
