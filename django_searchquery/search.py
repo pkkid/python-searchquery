@@ -1,52 +1,25 @@
 # encoding: utf-8
-import calendar, datetime, logging, re, shlex, timelib
-from dateutil.relativedelta import relativedelta
-from django.db.models import Q
+import logging
 from functools import reduce
-from types import SimpleNamespace
+from pyparsing import ParseResults
+from pyparsing.exceptions import ParseException
+from . import parser, searchfields, utils
+from .exceptions import SearchError
 log = logging.getLogger(__name__)
 
-NONE = ('none', 'null')
-OPERATIONS = {'=':'__iexact', '>':'__gt', '>=':'__gte', '<=':'__lte', '<':'__lt', ':': '__icontains'}
-REVERSEOP = {'__gt':'__lte', '__gte':'__lt', '__lte':'__gt', '__lt':'__gte'}
-STOPWORDS = ('and', '&&', '&', 'or', '||', '|')
-MONTHNAMES = [m.lower() for m in list(calendar.month_name)[1:] + list(calendar.month_abbr)[1:] + ['sept']]
-DEFAULT_MODIFIER = lambda value: value
 
-FIELDTYPES = SimpleNamespace()
-FIELDTYPES.BOOL = 'bool'
-FIELDTYPES.DATE = 'date'
-FIELDTYPES.NUM = 'numeric'
-FIELDTYPES.STR = 'string'
-
-
-class SearchError(Exception):
-    pass
-
-
-class SearchField:
-
-    def __init__(self, fieldstr, fieldtype, field, modifier=None, desc=None):
-        self.fieldstr = fieldstr        # field string user should input
-        self.fieldtype = fieldtype      # field type (NUM, STR, ...)
-        self.field = field              # model field lookup (ex: account__first_name)
-        self.modifier = modifier        # callback to modify search_value comparing
-        self.desc = desc                # Human readable description
-        
-    def __str__(self):
-        return '<%s:%s:%s>' % (self.__class__.__name__, self.fieldtype, self.field)
-        
-        
 class Search:
     
-    def __init__(self, basequeryset, fields, searchstr, tzinfo=None):
-        self.errors = []                                # list of errors to display
-        self.basequeryset = basequeryset                # base queryset to filter in Search
-        self.fields = {f.fieldstr:f for f in fields}    # field objects to filter on
-        self.searchstr = searchstr                      # orignal search string
-        self.tzinfo = tzinfo                            # tzinfo for datetime fields
-        self._queryset = None                           # final queryset
+    def __init__(self, basequery, fields, searchstr, tzinfo=None):
+        self.error = None                               # List of errors to display
+        self.basequery = basequery                      # Base queryset to filter in Search
+        self.fields = {f.searchkey:f for f in fields}   # Field objects to filter on
+        self.searchstr = searchstr                      # Orignal search string
+        self.tzinfo = tzinfo                            # TZ info for datetime fields
     
+    def __str__(self):
+        return f'<{self.__class__.__name__}:{self.basequery.model.__name__}>'
+
     @property
     def meta(self):
         """ Returns metadata about this Search object. """
@@ -54,338 +27,113 @@ class Search:
         result['fields'] = {k:f.desc for k,f in self.fields.items()}
         if self.searchstr:
             result['query'] = self.searchstr or ''
-            result['filters'] = self.filterstrs
-            if self.errors:
-                result['errors'] = ', '.join(self.errors)
+            # result['filters'] = self.filterstrs
+            if self.error:
+                result['error'] = self.error
         return result
-    
-    @property
-    def filterstrs(self):
-        """ Returns a list of processed filters used in the search. """
-        return {c.filterstr:c.searchtype for c in self.chunks}
 
-    def _build_chunks(self):
+    def queryset(self, node=None, exclude=False):
+        """ Recursivly builds the django queryset. """
         try:
-            chunkstrs = shlex.split(self.searchstr)
-            for chunk in [c for c in chunkstrs if c in STOPWORDS]:
-                self.errors.append('Part of the search is being ignored: %s' % chunk)
-            return [SearchChunk(self, c) for c in chunkstrs if c not in STOPWORDS]
-        except Exception as err:
-            self.errors.append('Invalid query: %s' % err)
-            log.exception(err)
-            
-    def queryset(self):
-        if self._queryset is None:
-            self.chunks = self._build_chunks()
-            if self.errors:
-                print('%s errors found in search!' % len(self.errors))
-                self._queryset = self.basequeryset.filter(pk=-1)
-            else:
-                queryset = self.basequeryset
-                for chunk in self.chunks:
-                    queryset = queryset & chunk.queryset()
-                self.errors = [c.error for c in self.chunks if c.error]
-                # self.datefilters = self._list_datefilters()
-                self._queryset = queryset
-        log.debug(self._queryset.query)
-        return self._queryset
-        
-    
-class SearchChunk:
-    
-    def __init__(self, search, chunkstr):
-        self.search = search            # reference to parent search object
-        self.chunkstr = chunkstr        # single part of search.searchstr
-        self.exclude = False            # set True if this is an exclude
-        self.field = None               # search field from chunkstr
-        self.operation = None           # search operation from chunkstr
-        self.value = None               # search value from chunkstr
-        self.qfield = None              # django query field
-        self.qoperation = None          # django query operation
-        self.qvalue = None              # django query value
-        self.error = None               # error message (if applicable)
-        self.filterstr = ''             # Human readable filter string
-        self._parse_chunkstr()
-        
-    def __str__(self):
-        rtnstr = '\n--- %s ---\n' % self.__class__.__name__
-        for attr in ('chunkstr','exclude','field','value','qfield','qoperation','qvalue','error'):
-            value = getattr(self, attr)
-            if value is not None:
-                rtnstr += '%-12s %s\n' % (attr + ':', value)
-        return rtnstr
-
-    @property
-    def searchtype(self):
-        if self.operation == ':':
-            return FIELDTYPES.STR
-        return self.search.fields.get(self.field).fieldtype
-        
-    @property
-    def is_value_list(self):
-        if len(self.value) == 0:
-            return False
-        return self.value[0] == '[' and self.value[-1] == ']'
-    
-    def _update_filterstr(self, join='', **kwargs):
-        # Parse the kwargs
-        exclude = kwargs.get('exclude', self.exclude)
-        field = kwargs.get('field', self.qfield)
-        qoperation = kwargs.get('qoperation', self.qoperation)
-        qvalue = kwargs.get('qvalue', self.qvalue)
-        # Generic search
-        excludestr = '-' if exclude else ''
-        valuestr = qvalue if ' ' not in str(qvalue) else f"'{qvalue}'"
-        valuestr = str(valuestr).replace(' 00:00:00', '')
-        joinstr = join if not join else f' {join} '
-        if not field:
-            self.filterstr += f'{joinstr}{excludestr}{valuestr}'
-            return self.filterstr
-        # Advanced or Date search
-        fieldstr = field.fieldstr
-        opstr = dict((v,k) for k,v in OPERATIONS.items()).get(qoperation)
-        # opstr = opstr if opstr == ':' else f' {opstr} '
-        self.filterstr += f'{joinstr}{excludestr}{fieldstr}{opstr}{valuestr}'
-        return self.filterstr
-
-    def _parse_chunkstr(self):
-        try:
-            chunkstr = self.chunkstr
-            # check exclude pattern
-            if '-' == chunkstr[0]:
-                self.exclude = True
-                chunkstr = chunkstr[1:]
-            # save default value and operation
-            self.value = chunkstr
-            self.qvalue = chunkstr
-            self.operation = ':'
-            # check advanced search operations
-            for operation in sorted(OPERATIONS.keys(), key=len, reverse=True):
-                parts = chunkstr.split(operation, 1)
-                if len(parts) == 2:
-                    # extract field, operation, and value
-                    self.field = parts[0]
-                    self.operation = operation
-                    self.value = parts[1]
-                    # fetch the qfield, qoperation, and qvalue
-                    self.qfield = self._get_qfield()
-                    self.qvalue = self._get_qvalue()
-                    self.qoperation = self._get_qoperation()
-                    break  # only use one operation
+            subqueries = []
+            node = node or parser.SearchString.parseString(self.searchstr)
+            if isinstance(node, ParseResults):
+                queryfunc = getattr(self, f'_qs_{node.getName()}')
+                subqueries.append(queryfunc(node, exclude))
+            elif isinstance(node, (parser.UnaryOperator, parser.BinaryOperator)):
+                queryfunc = getattr(self, f'_qs_{node.operator}')
+                subqueries.append(queryfunc(node, exclude))
+            return self._merge_subqueries(subqueries)
+        except ParseException as err:
+            self.error = f"Unknown symbol '{err.line[err.loc]}' at position {err.loc}"
         except SearchError as err:
-            log.error(err)
             self.error = str(err)
-            
-    def _get_qfield(self):
-        field = self.search.fields.get(self.field)
+        return self.basequery.none()
+        
+    def _get_field(self, searchkey):
+        """ Returns the field object for the given searchkey. """
+        field = self.fields.get(searchkey)
         if not field:
-            raise SearchError('Unknown field: %s' % self.field)
-        elif self.searchtype != field.fieldtype:
-            raise SearchError('Unknown %s field: %s' % (self.searchtype, self.field))
+            raise SearchError(f"Unknown field '{searchkey}'")
         return field
     
-    def _get_qoperation(self):
-        # check were searching none
-        if self.value.lower() in NONE:
-            return '__isnull'
-        # regex will catch invalid operations, no need to check
-        operation = OPERATIONS[self.operation]
-        if self.is_value_list and self.operation == '=':
-            operation = '__in'
-        elif isinstance(self.qvalue, bool):
-            operation = ''
-        return operation
-        
-    def _get_qvalue(self):
-        # check were searching none
-        if self.value.lower() in NONE:
-            return True
-        # get correct modifier
-        modifier = DEFAULT_MODIFIER
-        modifier_args = {}
-        if self.qfield.modifier:
-            modifier = self.qfield.modifier
-        elif self.searchtype == FIELDTYPES.BOOL:
-            modifier = modifier_bool
-        elif self.searchtype == FIELDTYPES.NUM:
-            modifier = modifier_numeric
-        elif self.searchtype == FIELDTYPES.DATE:
-            modifier = modifier_date
-            modifier_args = {'tzinfo': self.search.tzinfo}
-        # process the modifier
-        if self.is_value_list:
-            return self._parse_value_list(modifier)
-        return modifier(self.value, **modifier_args)
-        
-    def _parse_value_list(self, modifier):
-        if self.operation != '=':
-            raise SearchError('Invalid operation is using list search: %s' % self.operation)
-        qvalues = set()
-        values = self.value.lstrip('[').rstrip(']')
-        for value in values.split(','):
-            qvalues.add(modifier(value))
-        return qvalues
-        
-    def queryset(self):
-        try:
-            queryset = self.search.basequeryset.all()
-            if self.error:
-                return queryset
-            elif not self.field:
-                return queryset & self._queryset_generic()
-            elif isinstance(self.qvalue, datetime.datetime):
-                return queryset & self._queryset_datetime()
-            return queryset & self._queryset_advanced()
-        except Exception as err:
-            log.exception(err)
-        
-    def _queryset_generic(self):
-        self._update_filterstr()
-        subqueries = self._queryset_generic_string()
-        subqueries += self._queryset_generic_num()
-        if self.exclude:
+    def _merge_subqueries(self, subqueries, andjoin=True):
+        """ Merge all subqueries into a single query. """
+        # The logic here can be a bit tangled up as the method to join queries
+        # with pretty tightly coupled with exlude. In short, if we are excluding,
+        # we generally want to join with AND (unless were doing a bitwise AND,
+        # then its backwards).
+        if andjoin:
             return reduce(lambda x,y: x & y, subqueries)
         return reduce(lambda x,y: x | y, subqueries)
 
-    def _queryset_generic_string(self):
-        # check all string fields for self.qvalue
+    def _qs_root(self, node, exclude=False):
+        """ Iterate through each subquery. """
+        return self.queryset(node[0], exclude)
+        # subqueries = []
+        # for childnode in node:
+        #     subqueries.append(self.queryset(childnode, exclude))
+        # return reduce(lambda x,y: x & y, subqueries)
+    
+    def _qs_and(self, node, exclude=False):
+        """ Join two queries with AND. """
         subqueries = []
-        stringfields = (f for f in self.search.fields.values() if f.fieldtype == FIELDTYPES.STR)
-        for field in stringfields:
-            kwarg = '%s%s' % (field.field, OPERATIONS[':'])
-            if self.exclude:
-                subquery = self.search.basequeryset.exclude(**{kwarg: self.qvalue})
-                subqueries.append(subquery)
-                continue
-            subquery = self.search.basequeryset.filter(**{kwarg: self.qvalue})
+        for childnode in node.operands:
+            subqueries.append(self.queryset(childnode, exclude))
+        return self._merge_subqueries(subqueries, not exclude)
+    
+    def _qs_or(self, node, exclude=False):
+        """ Join two queries with AND. """
+        subqueries = []
+        for childnode in node.operands:
+            subqueries.append(self.queryset(childnode, exclude))
+        return self._merge_subqueries(subqueries, exclude)
+    
+    def _qs_not(self, node, exclude=False):
+        """ Join two queries with AND. """
+        subqueries = []
+        exclude = not exclude
+        for childnode in node.operands:
+            print(childnode)
+            subqueries.append(self.queryset(childnode, exclude))
+        return reduce(lambda x,y: x | y, subqueries)
+    
+    def _qs_search_column(self, node, exclude=False):
+        """ Search a specific column for the specified string. """
+        exclude = not exclude if len(node) == 4 else exclude
+        searchkey, operator, valuestr = node[1:] if len(node) == 4 else node
+        field = self._get_field(searchkey)
+        return field.get_subquery(self.basequery, valuestr, operator, exclude)
+
+    def _qs_search_column_in(self, node, exclude=False):
+        """ Search a specific column contains one of many values. """
+        # Careful! We could have double exclude here.
+        subqueries = []
+        exclude = not exclude if len(node) == 4 else exclude
+        searchkey, operator, valuestrs = node[1:] if len(node) == 4 else node
+        exclude = not exclude if operator == 'not in' else exclude
+        field = self._get_field(searchkey)
+        subquery = self.basequery
+        for valuestr in valuestrs:
+            subquery = field.get_subquery(self.basequery, valuestr, '=', exclude)
             subqueries.append(subquery)
-        return subqueries
+        return self._merge_subqueries(subqueries, exclude)
 
-    def _queryset_generic_num(self):
-        # check all int and float fields for self.qvalue
+    def _qs_search_all_columns(self, node, exclude=False):
+        """ Search all columns for the specified string. """
         subqueries = []
-        if is_float(self.qvalue):
-            numfields = (f for f in self.search.fields.values() if f.fieldtype == FIELDTYPES.NUM)
+        exclude = not exclude if len(node) == 2 else exclude
+        valuestr = node[1] if len(node) == 2 else node[0]
+        # Search string fields
+        strfields = (f for f in self.fields.values() if isinstance(f, searchfields.StrField))
+        for field in strfields:
+            subquery = field.get_subquery(self.basequery, valuestr, ':', exclude)
+            subqueries.append(subquery)
+        # Search all num fields (if applicable)
+        if utils.is_number(valuestr):
+            numvaluestr = ''.join(node)
+            numfields = (f for f in self.fields.values() if isinstance(f, searchfields.NumField))
             for field in numfields:
-                qvalue = abs(float(self.qvalue))
-                sigdigs = len(self.qvalue.split('.')[1]) if '.' in self.qvalue else 0
-                variance = round(.1 ** sigdigs, sigdigs)
-                posfilter = {'%s__gte' % field.field: qvalue, '%s__lt' % field.field: qvalue + variance}
-                negfilter = {'%s__lte' % field.field: -qvalue, '%s__gt' % field.field: -qvalue - variance}
-                subquery = self.search.basequeryset.filter(**posfilter)
-                subquery |= self.search.basequeryset.filter(**negfilter)
+                subquery = field.get_subquery(self.basequery, numvaluestr, ':', exclude)
                 subqueries.append(subquery)
-        return subqueries
-        
-    def _queryset_advanced(self):
-        self._update_filterstr()
-        kwarg = '%s%s' % (self.qfield.field, self.qoperation)
-        if self.exclude:
-            return self.search.basequeryset.exclude(**{kwarg: self.qvalue})
-        return self.search.basequeryset.filter(**{kwarg: self.qvalue})
-
-    def _queryset_datetime(self):
-        # return the queryset for a date operation on a specific column.
-        clauses = []
-        mindate, maxdate = self._min_max_dates()
-        if self.operation == '>=': clauses.append([OPERATIONS['>='], mindate])
-        if self.operation == '>': clauses.append([OPERATIONS['>='], mindate])
-        if self.operation == '<=': clauses.append([OPERATIONS['<='], mindate])
-        if self.operation == '<': clauses.append([OPERATIONS['<='], mindate])
-        if self.operation == '=':
-            clauses.append([OPERATIONS['>='], mindate])
-            clauses.append([OPERATIONS['<'], maxdate])
-        # build and return the queryset
-        qobject = None
-        for qoperation, qvalue in clauses:
-            if self.exclude:
-                qoperation = REVERSEOP[qoperation]
-            kwarg = '%s%s' % (self.qfield.field, qoperation)
-            if not qobject:
-                qobject = Q(**{kwarg: qvalue})
-                self._update_filterstr(qoperation=qoperation, qvalue=qvalue)
-            elif self.exclude:
-                qobject |= Q(**{kwarg: qvalue})
-                self._update_filterstr(join='OR', qoperation=qoperation, qvalue=qvalue)
-            else:
-                qobject &= Q(**{kwarg: qvalue})
-                self._update_filterstr(join='AND', qoperation=qoperation, qvalue=qvalue)
-        return self.search.basequeryset.filter(qobject)
-
-    def _min_max_dates(self):
-        """ Figure out the daterange min and max dates for this date chunk. """
-        value = self.value.lower()
-        if is_year(value):
-            minyear = int(self.qvalue.strftime('%Y'))
-            mindate = datetime.datetime(minyear, 1, 1, tzinfo=self.search.tzinfo)
-            maxdate = mindate + relativedelta(years=1)
-        elif is_month(value):
-            minyear = int(self.qvalue.strftime('%Y'))
-            minmonth = int(self.qvalue.strftime('%m'))
-            mindate = datetime.datetime(minyear, minmonth, 1, tzinfo=self.search.tzinfo)
-            today = datetime.datetime.today(tzinfo=self.search.tzinfo)
-            if mindate > today and str(minyear) not in self.value:
-                mindate -= relativedelta(years=1)
-            maxdate = mindate + relativedelta(months=1)
-        else:
-            mindate = self.qvalue
-            maxdate = mindate + datetime.timedelta(days=1)
-        return mindate, maxdate
-
-
-def is_float(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
-
-
-def is_int(value):
-    try:
-        int(value)
-        return True
-    except ValueError:
-        return False
-
-
-def is_month(value):
-    parts = value.lower().split()
-    if len(parts) == 1 and parts[0] in MONTHNAMES:
-        return True
-    elif len(parts) == 2 and is_year(parts[0]) and is_month(parts[1]):
-        return True
-    elif len(parts) == 2 and is_month(parts[0]) and is_year(parts[1]):
-        return True
-    return False
-
-
-def is_year(value):
-    return re.match(r'^20\d\d$', value.lower())
-
-
-def modifier_bool(value):
-    if value.lower() in ('t', 'true', '1', 'y', 'yes'):
-        return True
-    elif value.lower() in ('f', 'false', '0', 'n', 'no'):
-        return False
-    raise SearchError('Invalid bool value: %s' % value)
-
-
-def modifier_numeric(value):
-    if re.match(r'^\-*\d+$', value):
-        return int(value)
-    elif re.match(r'^\-*\d+.\d+$', value):
-        return float(value)
-    raise SearchError('Invalid int value: %s' % value)
-
-
-def modifier_date(value, tzinfo=None):
-    try:
-        value = value.replace('_', ' ')
-        if is_year(value):
-            return datetime.datetime(int(value), 1, 1, tzinfo=tzinfo)
-        dt = timelib.strtodatetime(value.encode('utf8'))
-        return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=tzinfo)
-    except Exception:
-        raise SearchError("Invalid date format: '%s'" % value)
+        return self._merge_subqueries(subqueries, exclude)

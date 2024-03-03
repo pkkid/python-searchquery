@@ -12,13 +12,13 @@ result set using a friendly syntax. The module will parse the search string and
 return a Djazngo Query object.
 
 ```python
-from django_searchquery.search import FIELDTYPES, SearchField
+from django_searchquery import searchfields as sf
 from myapp.applications.models import Application
 
 SEARCH_FIELDS = [
-    SearchField('name', FIELDTYPES.STR, 'name'),
-    SearchField('age', FIELDTYPES.NUM, 'age'),
-    SearchField('date', FIELDTYPES.NUM, 'date'),
+    sf.StrField(searchkey='name', modelfield='name'),
+    sf.NumField(searchkey='age', modelfield='age'),
+    sf.DateField(searchkey='date', modelfield='date'),
 ]
 
 basequeryset = Application.objects.all()
