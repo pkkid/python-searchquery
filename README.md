@@ -12,13 +12,17 @@ result set using a friendly syntax. The module will parse the search string and
 return a Djazngo Query object.
 
 ```python
+import pytz
+from django.conf import settings
 from django_searchquery import searchfields as sf
 from myapp.applications.models import Application
+
+TZINFO = pytz.timezone(settings.TIME_ZONE)
 
 SEARCH_FIELDS = [
     sf.StrField(searchkey='name', modelfield='name'),
     sf.NumField(searchkey='age', modelfield='age'),
-    sf.DateField(searchkey='date', modelfield='date'),
+    sf.DateField(searchkey='date', modelfield='date', modifier_args=[TZINFO]),
 ]
 
 basequery = Application.objects.all()
@@ -31,12 +35,9 @@ results = search.queryset()
 All searches are case insensative. Filters are broken apart using a space or the
 keywords `and` and `or`. A search of `foo bar` would search all string colums for
 the text containing foo and bar. Only results containing both strings would be
-displayed.
-
-Use quotes to join two words as a single search. A search of `"foo bar"` would
-search for an exact match containing "foo bar" together as one phrase.
-
-Use a minus sign `-` or the keyword `not` to exclude results from a search.
+displayed. Use quotes to join two words as a single search. A search of
+`"foo bar"` would search for an exact match containing "foo bar" together as one
+phrase. Use a minus sign `-` or the keyword `not` to exclude results from a search.
 
 * `John Doe` searches all string columns for the words john or doe.
 * `"John Doe"` searches for the exact match "john doe".
@@ -50,6 +51,14 @@ case-insensative match.
 
 * `error:assertion` searches the error column for a string containing 'assertion'.
 * `error="unsupported operand"` searches for the exact match 'unsupported operand`.
+
+### Infix Notation
+Infix notation is supported with the keywords `and`, `or`, and `not` as well
+as using parenthesis where needed. If there is no keyword specified between
+two search strings, an implicit and is inferred.
+
+* `age>30 -foobar` all rows where age>30 and no string columns contain "foo"
+* `age > 30 and (not foobar)` the exact same search as above.
 
 ### Numeric Columns
 Numeric columns can be searched using basic math operations. Available operators

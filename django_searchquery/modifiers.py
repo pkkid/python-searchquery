@@ -1,5 +1,6 @@
 # encoding: utf-8
-import datetime, re, timelib
+import re, timelib
+from datetime import datetime
 from . import utils
 from .exceptions import SearchError
 
@@ -24,8 +25,8 @@ def date(valuestr, tzinfo=None):
     try:
         valuestr = valuestr.replace('_', ' ')
         if utils.is_year(valuestr):
-            return datetime.datetime(int(valuestr), 1, 1, tzinfo=tzinfo)
+            return datetime(int(valuestr), 1, 1, tzinfo=tzinfo)
         dt = timelib.strtodatetime(valuestr.encode('utf8'))
-        return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=tzinfo)
+        return datetime(dt.year, dt.month, dt.day, tzinfo=tzinfo)
     except Exception:
         raise SearchError(f"Invalid date format '{valuestr}'")

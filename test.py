@@ -25,8 +25,8 @@ from pyparsing import ParseResults
 import sqlparse
 
 APPNAME = '__main__'
+TZINFO = pytz.timezone('America/New_York')
 settings.configure(
-    TZINFO=pytz.timezone('America/New_York'),
     INSTALLED_APPS=[APPNAME],
     DATABASES={'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -39,7 +39,7 @@ SEARCHFIELDS = [
     sf.StrField('testpath', 'testpath'),
     sf.StrField('path', 'filepath'),
     sf.StrField('title', 'title'),
-    sf.DateField('date', 'date'),
+    sf.DateField('date', 'date', modargs=[TZINFO]),
     sf.NumField('duration', 'duration'),
     sf.NumField('failcount', 'failcount'),
     sf.BoolField('running', 'running'),
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     pprint_parser_node(None, searchstr=opts.query)
     # Setup and run the search
     basequery = Test.objects.all()
-    search = Search(basequery, SEARCHFIELDS, opts.query, tzinfo=settings.TZINFO)
+    search = Search(basequery, SEARCHFIELDS, opts.query)
     results = search.queryset()
     print('\n-- Search Metadata --')
     print(json.dumps(search.meta, indent=2))
