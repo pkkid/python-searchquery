@@ -78,23 +78,28 @@ class DateField(SearchField):
 
     def _get_min_max_dates(self, valuestr):
         qvalue = self.get_qvalue(valuestr)
-        valuestr = valuestr.lower()
-        if utils.is_year(valuestr):
-            minyear = int(qvalue.strftime('%Y'))
-            mindate = datetime(minyear, 1, 1)
+        rdelta = utils.datestr_rdelta(valuestr)
+        now = datetime.now(self.modargs[0])  # modargs[0]=tz
+        if rdelta == utils.YEAR:
+            mindate = utils.clear_dt(qvalue, 'year')
             maxdate = mindate + relativedelta(years=1)
             return mindate, maxdate
-        elif utils.is_month(valuestr):
-            minyear = int(qvalue.strftime('%Y'))
-            minmonth = int(qvalue.strftime('%m'))
-            mindate = datetime(minyear, minmonth, 1)
-            if mindate > datetime.today() and str(minyear) not in valuestr:
+        if rdelta == utils.MONTH:
+            mindate = utils.clear_dt(qvalue, 'month')
+            if mindate > now:
                 mindate -= relativedelta(years=1)
             maxdate = mindate + relativedelta(months=1)
             return mindate, maxdate
-        mindate = qvalue
-        maxdate = mindate + timedelta(days=1)
-        return mindate, maxdate
+        if rdelta == utils.WEEK:
+            mindate = qvalue - timedelta(days=(qvalue.weekday() + 1) % 7)
+            mindate = utils.clear_dt(mindate, 'day')
+            maxdate = mindate + relativedelta(days=7)
+            return mindate, maxdate
+        if rdelta == utils.DAY:
+            mindate = utils.clear_dt(qvalue, 'day')
+            maxdate = mindate + timedelta(days=1)
+            return mindate, maxdate
+        return qvalue, None
 
 
 class NumField(SearchField):

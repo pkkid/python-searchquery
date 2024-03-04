@@ -27,6 +27,7 @@ import sqlparse
 APPNAME = '__main__'
 TZINFO = pytz.timezone('America/New_York')
 settings.configure(
+    TIME_ZONE='America/New_York',
     INSTALLED_APPS=[APPNAME],
     DATABASES={'default': {
         'ENGINE': 'django.db.backends.sqlite3',
