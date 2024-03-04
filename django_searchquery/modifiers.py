@@ -24,5 +24,5 @@ def date(valuestr, tzinfo=None):
         valuestr = valuestr.replace('_', ' ')
         dt = timelib.strtodatetime(valuestr.encode('utf8'))
         return dt.astimezone(tzinfo)
-    except Exception:
-        raise SearchError(f"Invalid date format '{valuestr}'")
+    except Exception as err:
+        raise SearchError(f"Invalid date format '{valuestr}'. {err}")
