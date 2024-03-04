@@ -72,9 +72,6 @@ def datestr_rdelta(valuestr):
         if is_year(s1) and is_month(s2): return MONTH  # 2024 Jan
         if is_month(s1) and is_day_num(s2): return DAY  # Jan 21
         if is_day_num(s1) and is_month(s2): return DAY  # 21 Jan
-        if s1 == 'last' and is_month(s2): return MONTH  # last jan
-        if s1 == 'this' and is_month(s2): return MONTH  # this jan
-        if s1 == 'next' and is_month(s2): return MONTH  # next jan
         if s1 == 'last' and is_weekday(s2): return DAY  # last wed
         if s1 == 'this' and is_weekday(s2): return DAY  # this wed
         if s1 == 'next' and is_weekday(s2): return DAY  # next wed
