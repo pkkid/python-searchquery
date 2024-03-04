@@ -1,6 +1,8 @@
 # encoding: utf-8
+import pytz
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from . import modifiers, utils
 from .exceptions import SearchError
 
@@ -51,6 +53,10 @@ class DateField(SearchField):
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
         super().__init__(search_key, model_field, desc, mod, modargs)
         self.mod = self.mod or modifiers.date
+        self.modargs = self.modargs or self._default_modargs()
+
+    def _default_modargs(self):
+        return [pytz.timezone(settings.TIME_ZONE)] if settings.TIME_ZONE else []
 
     def get_qvalue(self, valuestr):
         if utils.is_none(valuestr): return None

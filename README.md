@@ -12,21 +12,18 @@ result set using a friendly syntax. The module will parse the search string and
 return a Djazngo Query object.
 
 ```python
-import pytz
-from django.conf import settings
 from django_searchquery import searchfields as sf
 from myapp.applications.models import Application
-
-TZINFO = pytz.timezone(settings.TIME_ZONE)
 
 SEARCH_FIELDS = [
     sf.StrField(searchkey='name', modelfield='name'),
     sf.NumField(searchkey='age', modelfield='age'),
-    sf.DateField(searchkey='date', modelfield='date', modifier_args=[TZINFO]),
+    sf.DateField(searchkey='date', modelfield='date'),
 ]
 
 basequery = Application.objects.all()
-search = Search(basequery, SEARCH_FIELDS, 'age>30 date>"2 weeks ago" name=Michael')
+seatchstr = 'age>30 date>"2 weeks ago" name=Michael'
+search = Search(basequery, SEARCH_FIELDS, seatchstr)
 results = search.queryset()
 ```
 

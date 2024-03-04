@@ -40,7 +40,7 @@ SEARCHFIELDS = [
     sf.StrField('testpath', 'testpath'),
     sf.StrField('path', 'filepath'),
     sf.StrField('title', 'title'),
-    sf.DateField('date', 'date', modargs=[TZINFO]),
+    sf.DateField('date', 'date'),
     sf.NumField('duration', 'duration'),
     sf.NumField('failcount', 'failcount'),
     sf.BoolField('running', 'running'),
