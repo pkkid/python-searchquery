@@ -2,38 +2,45 @@
 import calendar, re
 from functools import reduce
 
-NONE = ('none', 'null')
+# Valid month names january-december + jan-dec + sept
 MONTH_NAMES = [m.lower() for m in list(calendar.month_name)[1:]]
 MONTH_NAMES += [m.lower() for m in list(calendar.month_abbr)[1:]]
-MONTH_NAMES += ['sept']
+MONTH_NAMES += ['sept']  # also very common
+
+# Valid weekday names sunday-saturday + sun-sat
 WEEKDAY_NAMES = [d.lower() for d in list(calendar.day_name)]
 WEEKDAY_NAMES += [d.lower() for d in list(calendar.day_abbr)]
+
+# Other useful constants
 YEAR, MONTH, WEEK, DAY = 'year', 'month', 'week', 'day'
+NONE = ('none', 'null')
+UNITS_NUM = (
+    (1000000000000000.0, ('q','qa','quadrillion')),
+    (1000000000000.0, ('t','tn','trillion')),
+    (1000000000.0, ('b','bn','billion')),
+    (1000000.0, ('m','million')),
+    (1000.0, ('k','thousand')),
+    (1.0, ()),
+)
+UNITS_SECONDS = (
+    (31536000.0, ('y','yr','yrs','year','years')),  # 365 days
+    (2678400.0, ('mo','mos','month','months')),  # 31 days
+    (604800.0, ('w','wk','wks','week','weeks')),
+    (86400.0, ('d','day','days')),
+    (3600.0, ('h','hr','hrs','hour','hours')),
+    (60.0, ('m','min','mins','minute','minutes')),
+    (1.0, ('s','sec','secs','second','seconds')),
+)
 
 
-def is_none(valuestr):
-    """ Returns true if the value is a None string. """
-    if valuestr.lower() in NONE:
-        return True
-    return False
-
-
-def is_int(valuestr):
-    """ Returns true if the valuestr can be converted to an int. """
-    try:
-        int(valuestr)
-        return True
-    except ValueError:
-        return False
-
-
-def is_number(valuestr):
-    """ Returns true if the valuestr can be converted to a float. """
-    try:
-        float(valuestr)
-        return True
-    except ValueError:
-        return False
+def clear_dt(dt, clearto='day'):
+    """ Return the dt from the beginning of the month. """
+    attrs = ['year','month','day','hour','minute','second','microsecond']
+    kwargs = {}
+    for attr in attrs[attrs.index(clearto)+1:]:
+        newvalue = 1 if attr in ('month', 'day') else 0
+        kwargs[attr] = newvalue
+    return dt.replace(**kwargs)
 
 
 def datestr_rdelta(valuestr):
@@ -86,14 +93,18 @@ def datestr_rdelta(valuestr):
     return None
 
 
-def is_weekday(valuestr):
-    """ Returns true if the valuestr is a weekday name. """
-    return valuestr.lower() in WEEKDAY_NAMES
-
-
 def is_day_num(valuestr):
     """ Returns true if the valuestr is a number between 1-31. """
     return is_int(valuestr) and 0 < int(valuestr) <= 31
+
+
+def is_int(valuestr):
+    """ Returns true if the valuestr can be converted to an int. """
+    try:
+        int(valuestr)
+        return True
+    except ValueError:
+        return False
 
 
 def is_month(valuestr):
@@ -105,19 +116,30 @@ def is_month_num(valuestr):
     return is_int(valuestr) and 0 < int(valuestr) <= 12
 
 
+def is_none(valuestr):
+    """ Returns true if the value is a None string. """
+    if valuestr.lower() in NONE:
+        return True
+    return False
+
+
+def is_number(valuestr):
+    """ Returns true if the valuestr can be converted to a float. """
+    try:
+        float(valuestr)
+        return True
+    except ValueError:
+        return False
+
+
+def is_weekday(valuestr):
+    """ Returns true if the valuestr is a weekday name. """
+    return valuestr.lower() in WEEKDAY_NAMES
+
+
 def is_year(valuestr):
     """ Returns true if the valuestr is a 4 digit year. """
     return is_int(valuestr) and 1900 <= int(valuestr) <= 2100
-
-
-def clear_dt(dt, clearto='day'):
-    """ Return the dt from the beginning of the month. """
-    attrs = ['year','month','day','hour','minute','second','microsecond']
-    kwargs = {}
-    for attr in attrs[attrs.index(clearto)+1:]:
-        newvalue = 1 if attr in ('month', 'day') else 0
-        kwargs[attr] = newvalue
-    return dt.replace(**kwargs)
 
 
 def merge_queries(queries, andjoin=True):
@@ -129,3 +151,36 @@ def merge_queries(queries, andjoin=True):
     if andjoin:
         return reduce(lambda x,y: x & y, queries)
     return reduce(lambda x,y: x | y, queries)
+
+
+def parent_searchfields(searchfields, search_key_prefix='', search_key_suffix='',
+                        model_field_prefix='', model_field_suffix=''):
+    """ Returns a new list of searchfields with the search_keys or model_fields
+        updated with a prefix or suffix. This makes it easy to include parent
+        search fields on a child table.
+    """
+    newsearchfields = []
+    for sf in searchfields:
+        cls = sf.__class__
+        searchkey = f'{search_key_prefix}{sf.search_key}{search_key_suffix}'
+        modelfield = f'{model_field_prefix}{sf.model_field}{model_field_suffix}'
+        newsearchfield = cls(search_key=searchkey, model_field=modelfield,
+            desc=sf.desc, mod=sf.mod, modargs=sf.modargs)
+        newsearchfields.append(newsearchfield)
+    return newsearchfields
+
+
+def convert_units(valuestr, units=UNITS_NUM):
+    """ Convert the valuestr to a number and multiply by the unit. """
+    if not valuestr:
+        return 0
+    valuestr = valuestr.lower().strip()
+    matches = re.findall(r'^(-*[0-9\.]+)\s*([a-z]+)$', valuestr)
+    if len(matches) and len(matches[0]) == 2:
+        value, unit = matches[0]
+        for mult, unitlist in units:
+            if unit in unitlist:
+                return float(value) * mult
+    if is_number(valuestr):
+        return float(valuestr)
+    raise Exception(f"Unknown number format '{valuestr}'")

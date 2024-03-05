@@ -43,17 +43,17 @@ class BoolField(SearchField):
     VALID_OPERATORS = ('=',)
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+        mod = mod or modifiers.boolean
         super().__init__(search_key, model_field, desc, mod, modargs)
-        self.mod = self.mod or modifiers.boolean
 
 
 class DateField(SearchField):
     VALID_OPERATORS = ('=', '>', '>=', '<=', '<')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+        mod = mod or modifiers.date
+        modargs = modargs or self._default_modargs()
         super().__init__(search_key, model_field, desc, mod, modargs)
-        self.mod = self.mod or modifiers.date
-        self.modargs = self.modargs or self._default_modargs()
 
     def _default_modargs(self):
         return [pytz.timezone(settings.TIME_ZONE)] if settings.TIME_ZONE else []
@@ -110,10 +110,10 @@ class DateField(SearchField):
 
 class NumField(SearchField):
     VALID_OPERATORS = ('=', '>', '>=', '<=', '<', ':')
-
+    
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+        mod = mod or modifiers.num
         super().__init__(search_key, model_field, desc, mod, modargs)
-        self.mod = self.mod or modifiers.num
 
     def get_subquery(self, basequery, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
@@ -145,9 +145,10 @@ class StrField(SearchField):
     VALID_OPERATORS = ('=', ':')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+        default_modifier = lambda valuestr: valuestr
+        mod = mod or default_modifier
         super().__init__(search_key, model_field, desc, mod, modargs)
-        default_modifier = lambda valuestr, _: valuestr
-        self.mod = self.mod or default_modifier
+        
     
     def get_subquery(self, basequery, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """

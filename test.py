@@ -16,6 +16,7 @@ import argparse, pytz, django
 from django.conf import settings
 from django.core.exceptions import EmptyResultSet
 from django.db import models
+from django_searchquery import modifiers as mods
 from django_searchquery.parser import BinaryOperator, UnaryOperator, SearchString
 from django_searchquery.search import Search
 from django_searchquery import searchfields as sf
@@ -41,7 +42,7 @@ SEARCHFIELDS = [
     sf.StrField('path', 'filepath'),
     sf.StrField('title', 'title'),
     sf.DateField('date', 'date'),
-    sf.NumField('duration', 'duration'),
+    sf.NumField('runtime', 'runtime', mod=mods.duration),
     sf.NumField('failcount', 'failcount'),
     sf.BoolField('running', 'running'),
 ]
@@ -53,7 +54,7 @@ class Test(models.Model):
     filepath = models.CharField(max_length=256)
     title = models.CharField(max_length=256, null=True)
     date = models.DateTimeField()
-    duration = models.IntegerField()
+    runtime = models.IntegerField()
     failcount = models.IntegerField()
     running = models.BooleanField()
 
@@ -105,10 +106,10 @@ if __name__ == '__main__':
     print('\n-- PARSER --')
     pprint_parser_node(None, searchstr=opts.query)
     # Setup and run the search
+    print('\n-- Search Metadata --')
     basequery = Test.objects.all()
     search = Search(basequery, SEARCHFIELDS, opts.query)
     results = search.queryset()
-    print('\n-- Search Metadata --')
     print(json.dumps(search.meta, indent=2))
     print('\n-- QUERY --')
     pprint_sql(results)
