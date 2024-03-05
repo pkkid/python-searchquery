@@ -24,16 +24,18 @@ def date(valuestr, tzinfo=None):
 def duration(valuestr):
     """ Convert valuestr such as 1d, 1h, 1m, 1s to an integer. """
     try:
-        return utils.convert_units(valuestr, utils.UNITS_SECONDS)
-    except Exception as err:
+        result = utils.convert_units(valuestr, utils.UNITS_SECONDS)
+        return int(result) if result.is_integer() else result
+    except Exception:
         raise SearchError(f"Unknown duration format '{valuestr}'")
 
 
 def num(valuestr):
     """ Convert valuestr such as 1k, 1M, 1G to an integer. """
     try:
-        return utils.convert_units(valuestr, utils.UNITS_NUM)
-    except Exception as err:
+        result = utils.convert_units(valuestr, utils.UNITS_NUM)
+        return int(result) if result.is_integer() else result
+    except Exception:
         raise SearchError(f"Unknown number format '{valuestr}'")
 
 
