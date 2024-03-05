@@ -43,6 +43,22 @@ def clear_dt(dt, clearto='day'):
     return dt.replace(**kwargs)
 
 
+def convert_units(valuestr, units=UNITS_NUM):
+    """ Convert the valuestr to a number and multiply by the unit. """
+    if not valuestr:
+        return 0
+    valuestr = valuestr.lower().strip()
+    matches = re.findall(r'^(-*[0-9\.]+)\s*([a-z]+)$', valuestr)
+    if len(matches) and len(matches[0]) == 2:
+        value, unit = matches[0]
+        for mult, unitlist in units:
+            if unit in unitlist:
+                return float(value) * mult
+    if is_number(valuestr):
+        return float(valuestr)
+    raise Exception(f"Unknown number format '{valuestr}'")
+
+
 def datestr_rdelta(valuestr):
     """ Given a datestr, try our best to determine the duration of time it is
         referring to. This is used when searching a DateField for a specific
@@ -168,19 +184,3 @@ def parent_searchfields(searchfields, search_key_prefix='', search_key_suffix=''
             desc=sf.desc, mod=sf.mod, modargs=sf.modargs)
         newsearchfields.append(newsearchfield)
     return newsearchfields
-
-
-def convert_units(valuestr, units=UNITS_NUM):
-    """ Convert the valuestr to a number and multiply by the unit. """
-    if not valuestr:
-        return 0
-    valuestr = valuestr.lower().strip()
-    matches = re.findall(r'^(-*[0-9\.]+)\s*([a-z]+)$', valuestr)
-    if len(matches) and len(matches[0]) == 2:
-        value, unit = matches[0]
-        for mult, unitlist in units:
-            if unit in unitlist:
-                return float(value) * mult
-    if is_number(valuestr):
-        return float(valuestr)
-    raise Exception(f"Unknown number format '{valuestr}'")
