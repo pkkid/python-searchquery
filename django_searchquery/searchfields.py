@@ -82,7 +82,7 @@ class DateField(SearchField):
             qobject = Q(**{kwarg: qvalue})
             qobject = ~qobject if exclude else qobject
             qobjects.append(qobject)
-        return utils.merge_queries(qobjects, exclude)
+        return utils.merge_qobjects(qobjects, exclude)
 
     def _get_min_max_dates(self, valuestr):
         qvalue = self.get_qvalue(valuestr)

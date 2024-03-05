@@ -117,9 +117,8 @@ if __name__ == '__main__':
     pprint_parser_node(None, searchstr=opts.query)
     # Setup and run the search
     print('\n-- Search Metadata --')
-    basequery = Test.objects.all()
-    search = Search(basequery, SEARCHFIELDS, opts.query)
-    results = search.queryset()
+    search = Search(SEARCHFIELDS, opts.query)
+    results = Test.objects.filter(search.qobject)
     print(json.dumps(search.meta, indent=2))
     print('\n-- QUERY --')
     pprint_sql(results)

@@ -142,7 +142,7 @@ def is_year(valuestr):
     return is_int(valuestr) and 1900 <= int(valuestr) <= 2100
 
 
-def merge_queries(qobjects, andjoin=True):
+def merge_qobjects(qobjects, andjoin=True):
     """ Merge all qobjects into a single qobject. """
     # The logic here can be a bit tangled up as the method to join qobjects
     # with pretty tightly coupled with exlude. In short, if we are excluding,
