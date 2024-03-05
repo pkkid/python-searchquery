@@ -3,6 +3,7 @@ import pytz
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.db.models import Q
 from . import modifiers, utils
 from .exceptions import SearchError
 
@@ -31,12 +32,12 @@ class SearchField:
         if self.mod is None: return valuestr
         return self.mod(valuestr, *self.modargs)
 
-    def get_subquery(self, basequery, valuestr, operator=':', exclude=False):
+    def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
         kwarg = f'{self.model_field}{OPERATORS[operator]}'
         qvalue = self.get_qvalue(valuestr)
-        queryfunc = basequery.exclude if exclude else basequery.filter
-        return queryfunc(**{kwarg: qvalue})
+        qobject = Q(**{kwarg: qvalue})
+        return ~qobject if exclude else qobject
 
 
 class BoolField(SearchField):
@@ -62,7 +63,7 @@ class DateField(SearchField):
         if utils.is_none(valuestr): return None
         return modifiers.date(valuestr, *self.modargs)
     
-    def get_subquery(self, basequery, valuestr, operator=':', exclude=False):
+    def get_subquery(self, valuestr, operator=':', exclude=False):
         # Build kwargs from the min and max dates. It looks like we're changing
         # the > to >= here, becasue we are. Dates are funny and people of think
         # of them inclusively.
@@ -76,11 +77,12 @@ class DateField(SearchField):
             kwargs[f'{self.model_field}{OPERATORS[">="]}'] = mindate
             kwargs[f'{self.model_field}{OPERATORS["<"]}'] = maxdate
         # Build and return the queryset
-        subqueries = []
+        qobjects = []
         for kwarg, qvalue in kwargs.items():
-            queryfunc = basequery.exclude if exclude else basequery.filter
-            subqueries.append(queryfunc(**{kwarg: qvalue}))
-        return utils.merge_queries(subqueries, exclude)
+            qobject = Q(**{kwarg: qvalue})
+            qobject = ~qobject if exclude else qobject
+            qobjects.append(qobject)
+        return utils.merge_queries(qobjects, exclude)
 
     def _get_min_max_dates(self, valuestr):
         qvalue = self.get_qvalue(valuestr)
@@ -115,13 +117,13 @@ class NumField(SearchField):
         mod = mod or modifiers.num
         super().__init__(search_key, model_field, desc, mod, modargs)
 
-    def get_subquery(self, basequery, valuestr, operator=':', exclude=False):
+    def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
         if operator == ':':
-            return self._get_contains_subquery(basequery, valuestr)
-        return super().get_subquery(basequery, valuestr, operator, exclude)
+            return self._get_contains_subquery(valuestr)
+        return super().get_subquery(valuestr, operator, exclude)
     
-    def _get_contains_subquery(self, basequery, valuestr):
+    def _get_contains_subquery(self, valuestr):
         """ Returns list of subqueries for a generic 'contains' search. """
         # There are two things that make generically searching a number not as
         # straight forward as one might think:
@@ -134,11 +136,11 @@ class NumField(SearchField):
         sigdigs = len(valuestr.split('.')[1]) if '.' in valuestr else 0
         variance = round(.1 ** sigdigs, sigdigs)
         negfilter = {f'{self.model_field}__lte': -qvalue, f'{self.model_field}__gt': -qvalue - variance}
-        subquery = basequery.filter(**negfilter)
+        qobject = Q(**negfilter)
         if ispositive:
             posfilter = {f'{self.model_field}__gte': qvalue, f'{self.model_field}__lt': qvalue + variance}
-            subquery |= basequery.filter(**posfilter)
-        return subquery
+            qobject |= Q(**posfilter)
+        return qobject
 
 
 class StrField(SearchField):
@@ -149,9 +151,8 @@ class StrField(SearchField):
         mod = mod or default_modifier
         super().__init__(search_key, model_field, desc, mod, modargs)
         
-    
-    def get_subquery(self, basequery, valuestr, operator=':', exclude=False):
+    def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
         if operator not in self.VALID_OPERATORS:
             raise SearchError(f"Invalid operator '{operator}' for string field")
-        return super().get_subquery(basequery, valuestr, operator, exclude)
+        return super().get_subquery(valuestr, operator, exclude)

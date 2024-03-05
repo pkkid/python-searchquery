@@ -37,7 +37,9 @@ class Search:
         try:
             subqueries = []
             node = node or parser.SearchString.parseString(self.searchstr)
-            if isinstance(node, ParseResults):
+            if isinstance(node, ParseResults) and node.getName() == 'root':
+                return self._qs_root(node, exclude)
+            elif isinstance(node, ParseResults):
                 queryfunc = getattr(self, f'_qs_{node.getName()}')
                 subqueries.append(queryfunc(node, exclude))
             elif isinstance(node, (parser.UnaryOperator, parser.BinaryOperator)):
@@ -58,11 +60,12 @@ class Search:
         return field
 
     def _qs_root(self, node, exclude=False):
-        """ Iterate through each subquery. """
+        """ Iterate through each subquery and return the final queryset. """
         subqueries = []
         for childnode in node:
             subqueries.append(self.queryset(childnode, exclude))
-        return utils.merge_queries(subqueries, not exclude)
+        qobject = utils.merge_queries(subqueries, not exclude)
+        return self.basequery.filter(qobject)
     
     def _qs_and(self, node, exclude=False):
         """ Join two queries with AND. """
@@ -92,21 +95,20 @@ class Search:
         exclude = not exclude if len(node) == 4 else exclude
         searchkey, operator, valuestr = node[1:] if len(node) == 4 else node
         field = self._get_field(searchkey)
-        return field.get_subquery(self.basequery, valuestr, operator, exclude)
+        return field.get_subquery(valuestr, operator, exclude)
 
     def _qs_search_column_in(self, node, exclude=False):
         """ Search a specific column contains one of many values. """
         # Careful! We could have double exclude here.
-        subqueries = []
         exclude = not exclude if len(node) == 4 else exclude
         searchkey, operator, valuestrs = node[1:] if len(node) == 4 else node
         exclude = not exclude if operator == 'not in' else exclude
         field = self._get_field(searchkey)
-        subquery = self.basequery
+        qobjects = []
         for valuestr in valuestrs:
-            subquery = field.get_subquery(self.basequery, valuestr, '=', exclude)
-            subqueries.append(subquery)
-        return utils.merge_queries(subqueries, exclude)
+            qobject = field.get_subquery(valuestr, '=', exclude)
+            qobjects.append(qobject)
+        return utils.merge_queries(qobjects, exclude)
 
     def _qs_search_all_columns(self, node, exclude=False):
         """ Search all columns for the specified string. """
@@ -116,13 +118,13 @@ class Search:
         # Search string fields
         strfields = (f for f in self.fields.values() if isinstance(f, searchfields.StrField))
         for field in strfields:
-            subquery = field.get_subquery(self.basequery, valuestr, ':', exclude)
+            subquery = field.get_subquery(valuestr, ':', exclude)
             subqueries.append(subquery)
         # Search all num fields (if applicable)
         if utils.is_number(valuestr):
             numvaluestr = ''.join(node)
             numfields = (f for f in self.fields.values() if isinstance(f, searchfields.NumField))
             for field in numfields:
-                subquery = field.get_subquery(self.basequery, numvaluestr, ':', exclude)
+                subquery = field.get_subquery(numvaluestr, ':', exclude)
                 subqueries.append(subquery)
         return utils.merge_queries(subqueries, exclude)

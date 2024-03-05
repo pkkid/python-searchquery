@@ -142,15 +142,15 @@ def is_year(valuestr):
     return is_int(valuestr) and 1900 <= int(valuestr) <= 2100
 
 
-def merge_queries(queries, andjoin=True):
-    """ Merge all subqueries into a single query. """
-    # The logic here can be a bit tangled up as the method to join queries
+def merge_queries(qobjects, andjoin=True):
+    """ Merge all qobjects into a single qobject. """
+    # The logic here can be a bit tangled up as the method to join qobjects
     # with pretty tightly coupled with exlude. In short, if we are excluding,
     # we generally want to join with AND (unless were doing a bitwise AND,
     # then its backwards).
     if andjoin:
-        return reduce(lambda x,y: x & y, queries)
-    return reduce(lambda x,y: x | y, queries)
+        return reduce(lambda x,y: x & y, qobjects)
+    return reduce(lambda x,y: x | y, qobjects)
 
 
 def parent_searchfields(searchfields, search_key_prefix='', search_key_suffix='',
