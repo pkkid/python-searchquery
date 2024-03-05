@@ -37,15 +37,11 @@ settings.configure(
 )
 django.setup()
 
-SEARCHFIELDS = [
-    sf.StrField('testpath', 'testpath'),
-    sf.StrField('path', 'filepath'),
-    sf.StrField('title', 'title'),
-    sf.DateField('date', 'date'),
-    sf.NumField('runtime', 'runtime', mod=mods.duration),
-    sf.NumField('failcount', 'failcount'),
-    sf.BoolField('running', 'running'),
-]
+
+class Environment(models.Model):
+    """ Tests defined in pytest-automation. """
+    branch = models.CharField(max_length=256)
+    build = models.IntegerField()
 
 
 class Test(models.Model):
@@ -57,6 +53,20 @@ class Test(models.Model):
     runtime = models.IntegerField()
     failcount = models.IntegerField()
     running = models.BooleanField()
+    environment = models.ForeignKey(Environment, on_delete=models.CASCADE)
+
+
+SEARCHFIELDS = [
+    sf.StrField('testpath', 'testpath'),
+    sf.StrField('path', 'filepath'),
+    sf.StrField('title', 'title'),
+    sf.DateField('date', 'date'),
+    sf.NumField('runtime', 'runtime', mod=mods.duration),
+    sf.NumField('failcount', 'failcount'),
+    sf.BoolField('running', 'running'),
+    sf.StrField('branch', 'environment__branch'),
+    sf.NumField('build', 'environment__build'),
+]
 
 
 def pprint_parser_node(node, indent=0, searchstr=None):
