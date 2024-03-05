@@ -21,6 +21,8 @@ class Search:
 
     @cached_property
     def qobject(self):
+        if not self.searchstr:
+            return Q()
         return self._get_qobject()
     
     @property
