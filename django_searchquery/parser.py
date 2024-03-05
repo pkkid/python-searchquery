@@ -22,7 +22,7 @@ class BinaryOperator:
 
 
 # Basic Value Search (no column specified)
-basicValue = Word(printables, excludeChars=r'\'"(,-)')
+basicValue = Word(printables, excludeChars=r'\'"(,)')
 quoteValue = (QuotedString("'", escChar='\\') | QuotedString('"', escChar='\\'))
 singleValue = (basicValue | quoteValue)
 

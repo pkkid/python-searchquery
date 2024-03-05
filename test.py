@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # encoding: utf-8
 # Sets up a fake Django application and passes a search string
 # from the command line. It will print out the parser result as well
