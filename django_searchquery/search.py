@@ -59,7 +59,10 @@ class Search:
 
     def _qs_root(self, node, exclude=False):
         """ Iterate through each subquery. """
-        return self.queryset(node[0], exclude)
+        subqueries = []
+        for childnode in node:
+            subqueries.append(self.queryset(childnode, exclude))
+        return utils.merge_queries(subqueries, not exclude)
     
     def _qs_and(self, node, exclude=False):
         """ Join two queries with AND. """
