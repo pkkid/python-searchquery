@@ -31,11 +31,12 @@ class Search:
             to be calling this after getting the Search qobject.
         """
         result = {}
-        result['fields'] = {k:f.desc for k,f in self.fields.items()}
+        result['fields'] = {}
+        for key, field in self.fields.items():
+            stype = field.__class__.__name__.replace('Field', '').lower()
+            result['fields'][key] = f'{field.desc} ({stype})'
         if self.searchstr:
             result['query'] = self.searchstr or ''
-            # TODO: Bring this back? It's a lot of code :-/
-            # result['filters'] = self.filterstrs
             if self.error:
                 result['error'] = self.error
         return result

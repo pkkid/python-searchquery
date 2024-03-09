@@ -28,15 +28,24 @@ class SearchField:
 
     def get_qvalue(self, valuestr):
         """ Returns value to be used in the query. """
-        if utils.is_none(valuestr): return None
         if self.mod is None: return valuestr
         return self.mod(valuestr, *self.modargs)
 
     def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
+        if utils.is_none(valuestr):
+            return self.get_subquery_none(valuestr, operator, exclude)
         kwarg = f'{self.model_field}{OPERATORS[operator]}'
         qvalue = self.get_qvalue(valuestr)
         qobject = Q(**{kwarg: qvalue})
+        return ~qobject if exclude else qobject
+    
+    def get_subquery_none(self, valuestr, operator=':', exclude=False):
+        """ Returns the subquery for None value. """
+        if operator not in ('=', ':'):
+            raise SearchError(f"Invalid operator '{operator}' for None value")
+        kwarg = f'{self.model_field}__isnull'
+        qobject = Q(**{kwarg: True})
         return ~qobject if exclude else qobject
 
 
@@ -58,15 +67,13 @@ class DateField(SearchField):
 
     def _default_modargs(self):
         return [pytz.timezone(settings.TIME_ZONE)] if settings.TIME_ZONE else []
-
-    def get_qvalue(self, valuestr):
-        if utils.is_none(valuestr): return None
-        return modifiers.date(valuestr, *self.modargs)
     
     def get_subquery(self, valuestr, operator=':', exclude=False):
         # Build kwargs from the min and max dates. It looks like we're changing
         # the > to >= here, becasue we are. Dates are funny and people of think
         # of them inclusively.
+        if utils.is_none(valuestr):
+            return self.get_subquery_none(valuestr, operator, exclude)
         kwargs = {}
         mindate, maxdate = self._get_min_max_dates(valuestr)
         if operator in ('>=', '>'):
@@ -119,6 +126,8 @@ class NumField(SearchField):
 
     def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
+        if utils.is_none(valuestr):
+            return self.get_subquery_none(valuestr, operator, exclude)
         if operator == ':':
             return self._get_contains_subquery(valuestr)
         return super().get_subquery(valuestr, operator, exclude)
@@ -153,6 +162,8 @@ class StrField(SearchField):
         
     def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
+        if utils.is_none(valuestr):
+            return self.get_subquery_none(valuestr, operator, exclude)
         if operator not in self.VALID_OPERATORS:
             raise SearchError(f"Invalid operator '{operator}' for string field")
         return super().get_subquery(valuestr, operator, exclude)
