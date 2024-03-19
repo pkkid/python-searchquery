@@ -50,11 +50,20 @@ class SearchField:
 
 
 class BoolField(SearchField):
-    VALID_OPERATORS = ('=',)
+    VALID_OPERATORS = (':','=')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
         mod = mod or modifiers.boolean
         super().__init__(search_key, model_field, desc, mod, modargs)
+    
+    def get_subquery(self, valuestr, operator=':', exclude=False):
+        """ Returns list of subqueries for the given valuestr and operator. """
+        qvalue = self.get_qvalue(valuestr)
+        if utils.is_none(valuestr):
+            return self.get_subquery_none(valuestr, operator, exclude)
+        qvalue = self.get_qvalue(valuestr)
+        qobject = Q(**{self.model_field: qvalue})
+        return ~qobject if exclude else qobject
 
 
 class DateField(SearchField):
