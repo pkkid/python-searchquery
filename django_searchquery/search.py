@@ -11,10 +11,11 @@ log = logging.getLogger(__name__)
 
 class Search:
     
-    def __init__(self, fields, searchstr):
-        self.fields = {f.search_key:f for f in fields}  # Field objects to filter on
-        self.searchstr = searchstr                      # Orignal search string
-        self.error = None                               # List of errors to display
+    def __init__(self, fields, searchstr, allow_partial_fieldnames=True):
+        self.fields = {f.search_key.lower():f for f in fields}      # Field objects to filter on
+        self.searchstr = searchstr                                  # Orignal search string
+        self.allow_partial_fieldnames = allow_partial_fieldnames    # Allow specifying partial field names
+        self.error = None                                           # List of errors to display
     
     def __str__(self):
         return f'<{self.__class__.__name__}>'
@@ -62,10 +63,17 @@ class Search:
         
     def _get_field(self, searchkey):
         """ Returns the field object for the given searchkey. """
-        field = self.fields.get(searchkey)
-        if not field:
-            raise SearchError(f"Unknown field '{searchkey}'")
-        return field
+        key = searchkey.lower()
+        field = self.fields.get(key)
+        if field:
+            return field
+        if self.allow_partial_fieldnames:
+            matches = [f for k,f in self.fields.items() if key in k]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) >= 2:
+                raise SearchError(f"Ambiguous field '{searchkey}'")
+        raise SearchError(f"Unknown field '{searchkey}'")
 
     def _qs_root(self, node, exclude=False):
         """ Iterate through each child node. """
