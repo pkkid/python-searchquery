@@ -1,7 +1,7 @@
 # encoding: utf-8
 import logging
 from django.db.models import Q
-from functools import cached_property, reduce
+from functools import reduce
 from pyparsing import ParseResults
 from pyparsing.exceptions import ParseException
 from . import parser, searchfields, utils
@@ -11,43 +11,51 @@ log = logging.getLogger(__name__)
 
 class Search:
     
-    def __init__(self, fields, searchstr, allow_partial_fieldnames=True):
+    def __init__(self, fields, allow_partial_fieldnames=True):
         self.fields = {f.search_key.lower():f for f in fields}      # Field objects to filter on
-        self.searchstr = searchstr                                  # Orignal search string
         self.allow_partial_fieldnames = allow_partial_fieldnames    # Allow specifying partial field names
-        self.error = None                                           # List of errors to display
-        self.order_by = []                                          # Queryset order_by args
+        self._searchstr = ''    # Last searchstr used
+        self._order_by = []     # Order By args from last search
+        self._error = None      # Error message from last search
     
     def __str__(self):
         return f'<{self.__class__.__name__}>'
-
-    @cached_property
-    def qobject(self):
-        if not self.searchstr:
-            return Q()
-        return self._get_qobject()
+    
+    def get_queryset(self, queryset, searchstr):
+        """ Given a base queryset and a searchstr, return a new filtered queryset. """
+        self._searchstr = searchstr     # Save last searchstr
+        self._order_by = []             # Reset order_by
+        self._error = None              # Reset error message
+        if searchstr:
+            qobject = self._get_qobject(searchstr)
+            queryset = queryset.filter(qobject)
+        if self._order_by:
+            queryset = queryset.order_by(*self._order_by)
+        return queryset
     
     @property
     def meta(self):
-        """ Returns metadata about this Search object. Generally you want
-            to be calling this after getting the Search qobject.
+        """ Returns metadata about the last search. Generally you want
+            to be calling this after get_queryset.
         """
         result = {}
         result['fields'] = {}
         for key, field in self.fields.items():
             stype = field.__class__.__name__.replace('Field', '').lower()
             result['fields'][key] = f'{field.desc} ({stype})'
-        if self.searchstr:
-            result['query'] = self.searchstr or ''
-            if self.error:
-                result['error'] = self.error
+        if self._searchstr:
+            result['query'] = self._searchstr or ''
+            if self._error:
+                result['error'] = self._error
         return result
     
     def _get_qobject(self, node=None, exclude=False):
         """ Recursivly builds the django qobject. """
         try:
             qobjects = []
-            node = node or parser.SearchString.parseString(self.searchstr)
+
+            if isinstance(node, str):
+                node = parser.SearchString.parseString(node)
             if isinstance(node, ParseResults):
                 queryfunc = getattr(self, f'_qs_{node.getName()}')
                 qobjects.append(queryfunc(node, exclude))
@@ -56,9 +64,9 @@ class Search:
                 qobjects.append(queryfunc(node, exclude))
             return utils.merge_qobjects(qobjects)
         except ParseException as err:
-            self.error = f"Unknown symbol '{err.line[err.loc]}' at position {err.loc}"
+            self._error = f"Unknown symbol '{err.line[err.loc]}' at position {err.loc}"
         except SearchError as err:
-            self.error = str(err)
+            self._error = str(err)
         # return no results
         return Q(pk__in=[])
         
@@ -150,5 +158,5 @@ class Search:
         desc = '-' if len(node) == 2 else ''
         searchkey = node[1] if len(node) == 2 else node[0]
         field = self._get_field(searchkey)
-        self.order_by.append(f'{desc}{field.model_field}')
+        self._order_by.append(f'{desc}{field.model_field}')
         return Q()

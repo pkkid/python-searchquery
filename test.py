@@ -7,11 +7,14 @@
 # Testing requires additional requirements:
 #   pip install django sqlparse pygments pytz
 #
+# Example Test Call:
+#  python test.py -- "testpath:foo -path:failcount running in (true, 1) ORDER BY -path, date"
+#
 # If looking at this as an example, you should only need the following:
 #   1. Define the SEARCHFIELDS to reference your model fields.
-#   2. Optionally setup tzinfo to avoid naive datetimes.
-#   3. Define the basequery to be passed to the Ssarch object.
-#   4. Call search.Search(basequery, fields, searchstr, tzinfo=None)
+#   2. Define search = Search(SEARCHFIELDS)
+#   3. Call search.get_queryset(Test.objects.all(), opts.query)
+#
 import json, re
 import argparse, pytz, django
 from django.conf import settings
@@ -112,15 +115,18 @@ def pprint_sql(queryset):
 if __name__ == '__main__':
     cmdline = argparse.ArgumentParser(description='Test the PyParser')
     cmdline.add_argument('query', help='Search string to test with')
+    cmdline.add_argument('-v', '--verbose', default=False, action='store_true', help='Show verbose output')
     opts = cmdline.parse_args()
-    # Setup the parser and display the output
-    print('\n-- PARSER --')
-    pprint_parser_node(None, searchstr=opts.query)
-    # Setup and run the search
-    print('\n-- Search Metadata --')
-    search = Search(SEARCHFIELDS, opts.query)
-    results = Test.objects.filter(search.qobject).order_by(*search.order_by)
-    print(json.dumps(search.meta, indent=2))
-    print('\n-- QUERY --')
+    # Setup the Search object and get the queryset
+    search = Search(SEARCHFIELDS)
+    results = search.get_queryset(Test.objects.all(), opts.query)
+    # Show Verbose output if requested
+    if opts.verbose:
+        print('\n-- PARSER --')
+        pprint_parser_node(None, searchstr=opts.query)
+        print('\n-- Search Metadata --')
+        print(json.dumps(search.meta, indent=2))
+    # Show the resulting SQL query
+    print('\n-- QUERY --' if opts.verbose else '')
     pprint_sql(results)
     

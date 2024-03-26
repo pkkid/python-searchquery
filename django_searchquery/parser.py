@@ -3,7 +3,7 @@ from pyparsing import CaselessKeyword, QuotedString
 from pyparsing import Group, Literal, Word
 from pyparsing import alphanums, printables
 from pyparsing import delimitedList, oneOf, infixNotation, opAssoc
-from pyparsing import Suppress, StringEnd, OneOrMore, Optional
+from pyparsing import Suppress, StringEnd, Optional, ZeroOrMore
 
 OPERATORS = '= != > >= <= < :'
 ORDERBY = Suppress(CaselessKeyword('order by'))
@@ -40,7 +40,7 @@ singleQuery = Group(searchColumn | searchColumnIn | searchAllColumns)
 
 # Root Queries (joined by operators)
 # ~ORDERBY here makes the OneOrMore not greedy
-rootQuery = OneOrMore(~ORDERBY + infixNotation(singleQuery, [
+rootQuery = ZeroOrMore(~ORDERBY + infixNotation(singleQuery, [
     (NOT, 1, opAssoc.RIGHT, UnaryOperator),
     (AND, 2, opAssoc.LEFT, BinaryOperator),
     (OR, 2, opAssoc.LEFT, BinaryOperator),
