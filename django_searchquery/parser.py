@@ -6,6 +6,7 @@ from pyparsing import delimitedList, oneOf, infixNotation, opAssoc
 from pyparsing import Suppress, StringEnd, OneOrMore, Optional
 
 OPERATORS = '= != > >= <= < :'
+ORDERBY = Suppress(CaselessKeyword('order by'))
 AND,OR,IN,NOT = map(CaselessKeyword, 'and or in not'.split())
 NOTIN = CaselessKeyword('not in')
 NEG = Literal('-')
@@ -38,11 +39,16 @@ searchAllColumns = (Optional(NEG) + singleValue).setResultsName('search_all_colu
 singleQuery = Group(searchColumn | searchColumnIn | searchAllColumns)
 
 # Root Queries (joined by operators)
-rootQuery = infixNotation(singleQuery, [
+# ~ORDERBY here makes the OneOrMore not greedy
+rootQuery = OneOrMore(~ORDERBY + infixNotation(singleQuery, [
     (NOT, 1, opAssoc.RIGHT, UnaryOperator),
     (AND, 2, opAssoc.LEFT, BinaryOperator),
     (OR, 2, opAssoc.LEFT, BinaryOperator),
-]).setResultsName('root')
+])).setResultsName('root')
+
+# Order By
+orderByColumn = Group(Optional(NEG) + column).setResultsName('orderby')
+orderBy = Optional(ORDERBY + delimitedList(orderByColumn, delim=','))
 
 # SearchString - Final Parser object
-SearchString = OneOrMore(rootQuery) + StringEnd()
+SearchString = rootQuery + orderBy + StringEnd()

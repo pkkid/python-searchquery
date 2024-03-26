@@ -16,6 +16,7 @@ class Search:
         self.searchstr = searchstr                                  # Orignal search string
         self.allow_partial_fieldnames = allow_partial_fieldnames    # Allow specifying partial field names
         self.error = None                                           # List of errors to display
+        self.order_by = []                                          # Queryset order_by args
     
     def __str__(self):
         return f'<{self.__class__.__name__}>'
@@ -41,7 +42,7 @@ class Search:
             if self.error:
                 result['error'] = self.error
         return result
-
+    
     def _get_qobject(self, node=None, exclude=False):
         """ Recursivly builds the django qobject. """
         try:
@@ -143,3 +144,11 @@ class Search:
                 subquery = field.get_subquery(numvaluestr, ':', exclude)
                 qobjects.append(subquery)
         return utils.merge_qobjects(qobjects, exclude)
+    
+    def _qs_orderby(self, node, exclude=False):
+        """ Save the order_by arg to self.order_by. """
+        desc = '-' if len(node) == 2 else ''
+        searchkey = node[1] if len(node) == 2 else node[0]
+        field = self._get_field(searchkey)
+        self.order_by.append(f'{desc}{field.model_field}')
+        return Q()

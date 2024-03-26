@@ -119,7 +119,7 @@ if __name__ == '__main__':
     # Setup and run the search
     print('\n-- Search Metadata --')
     search = Search(SEARCHFIELDS, opts.query)
-    results = Test.objects.filter(search.qobject)
+    results = Test.objects.filter(search.qobject).order_by(*search.order_by)
     print(json.dumps(search.meta, indent=2))
     print('\n-- QUERY --')
     pprint_sql(results)
