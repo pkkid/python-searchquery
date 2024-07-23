@@ -26,7 +26,7 @@ class Search:
         self._searchstr = searchstr     # Save last searchstr
         self._order_by = []             # Reset order_by
         self._error = None              # Reset error message
-        if searchstr:
+        if searchstr and searchstr.strip():
             qobject = self._get_qobject(searchstr)
             queryset = queryset.filter(qobject)
         if self._order_by:
