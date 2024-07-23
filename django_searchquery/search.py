@@ -53,7 +53,6 @@ class Search:
         """ Recursivly builds the django qobject. """
         try:
             qobjects = []
-
             if isinstance(node, str):
                 node = parser.SearchString.parseString(node)
             if isinstance(node, ParseResults):

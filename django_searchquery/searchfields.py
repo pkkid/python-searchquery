@@ -85,6 +85,8 @@ class DateField(SearchField):
             return self.get_subquery_none(valuestr, operator, exclude)
         kwargs = {}
         mindate, maxdate = self._get_min_max_dates(valuestr)
+        if mindate is None or maxdate is None:
+            raise SearchError(f"Unknown date format '{valuestr}'.")
         if operator in ('>=', '>'):
             kwargs[f'{self.model_field}{OPERATORS[">="]}'] = mindate
         elif operator in ('<=', '<'):
@@ -98,7 +100,7 @@ class DateField(SearchField):
             qobject = Q(**{kwarg: qvalue})
             qobject = ~qobject if exclude else qobject
             qobjects.append(qobject)
-        return utils.merge_qobjects(qobjects, exclude)
+        return utils.merge_qobjects(qobjects, not exclude)
 
     def _get_min_max_dates(self, valuestr):
         qvalue = self.get_qvalue(valuestr)

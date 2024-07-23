@@ -85,6 +85,11 @@ def datestr_rdelta(valuestr):
     }
     if datestr in quickmatch:
         return quickmatch[datestr]
+    # Check a few common patterns
+    if datestr.endswith('year ago') or datestr.endswith('years ago'): return YEAR
+    if datestr.endswith('month ago') or datestr.endswith('months ago'): return MONTH
+    if datestr.endswith('week ago') or datestr.endswith('weeks ago'): return WEEK
+    if datestr.endswith('day ago') or datestr.endswith('days ago'): return DAY
     # More complicated checks
     strs = datestr.split()
     if is_year(valuestr): return YEAR  # 2024
