@@ -16,7 +16,7 @@ class SearchField:
     VALID_OPERATORS = ()
     
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
-        default_modifier = lambda valuestr: valuestr
+        default_modifier = modifiers.default_modifier
         self.search_key = search_key                    # Field string user should input
         self.model_field = model_field or search_key    # Model field lookup (ex: account__first_name)
         self.desc = desc                                # Human readable description
@@ -167,7 +167,7 @@ class StrField(SearchField):
     VALID_OPERATORS = ('=', ':')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
-        default_modifier = lambda valuestr: valuestr
+        default_modifier = modifiers.default_modifier
         mod = mod or default_modifier
         super().__init__(search_key, model_field, desc, mod, modargs)
         
