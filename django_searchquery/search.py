@@ -8,6 +8,8 @@ from . import parser, searchfields, utils
 from .exceptions import SearchError
 log = logging.getLogger(__name__)
 
+NORESULTS = Q(pk__in=[])
+
 
 class Search:
     
@@ -67,7 +69,7 @@ class Search:
         except SearchError as err:
             self._error = str(err)
         # return no results
-        return Q(pk__in=[])
+        return NORESULTS
         
     def _get_field(self, searchkey):
         """ Returns the field object for the given searchkey. """
@@ -140,6 +142,7 @@ class Search:
         valuestr = node[1] if len(node) == 2 else node[0]
         # Search string fields
         strfields = (f for f in self.fields.values() if isinstance(f, searchfields.StrField))
+        strfields = (f for f in strfields if f.generic is True)
         for field in strfields:
             subquery = field.get_subquery(valuestr, ':', exclude)
             qobjects.append(subquery)
@@ -147,10 +150,11 @@ class Search:
         if utils.is_number(valuestr):
             numvaluestr = ''.join(node)
             numfields = (f for f in self.fields.values() if isinstance(f, searchfields.NumField))
+            numfields = (f for f in numfields if f.generic)
             for field in numfields:
                 subquery = field.get_subquery(numvaluestr, ':', exclude)
                 qobjects.append(subquery)
-        return utils.merge_qobjects(qobjects, exclude)
+        return utils.merge_qobjects(qobjects, exclude) if qobjects else NORESULTS
     
     def _qs_orderby(self, node, exclude=False):
         """ Save the order_by arg to self.order_by. """

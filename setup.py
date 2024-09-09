@@ -9,7 +9,7 @@ with open('requirements.txt') as handle:
 
 setup(
     name='django_searchquery',
-    version='3.0.2',
+    version='4.0.0',
     description='Simple query search module for Django',
     author='Michael Shepanski',
     author_email='michael.shepanski@gmail.com',

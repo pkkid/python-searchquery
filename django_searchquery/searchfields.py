@@ -15,13 +15,14 @@ class SearchField:
     """ Abstract SearchField class. Don't use this directly. """
     VALID_OPERATORS = ()
     
-    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
         default_modifier = lambda valuestr: valuestr
         self.search_key = search_key                    # Field string user should input
         self.model_field = model_field or search_key    # Model field lookup (ex: account__first_name)
         self.desc = desc                                # Human readable description
         self.mod = mod or default_modifier              # Callback to modify search_value comparing
         self.modargs = modargs or []                    # Additional args to pass to the modifier
+        self.generic = generic                          # Include this field non specific searches
         
     def __str__(self):
         return f'<{self.__class__.__name__}:{self.model_field}>'
@@ -131,9 +132,9 @@ class DateField(SearchField):
 class NumField(SearchField):
     VALID_OPERATORS = ('=', '>', '>=', '<=', '<', ':')
     
-    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
         mod = mod or modifiers.num
-        super().__init__(search_key, model_field, desc, mod, modargs)
+        super().__init__(search_key, model_field, desc, mod, modargs, generic)
 
     def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
@@ -166,10 +167,10 @@ class NumField(SearchField):
 class StrField(SearchField):
     VALID_OPERATORS = ('=', ':')
 
-    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
+    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
         default_modifier = lambda valuestr: valuestr
         mod = mod or default_modifier
-        super().__init__(search_key, model_field, desc, mod, modargs)
+        super().__init__(search_key, model_field, desc, mod, modargs, generic)
         
     def get_subquery(self, valuestr, operator=':', exclude=False):
         """ Returns list of subqueries for the given valuestr and operator. """
