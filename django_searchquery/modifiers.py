@@ -21,6 +21,10 @@ def date(valuestr, tzinfo=None):
         raise SearchError(f"Invalid date format '{valuestr}'.")
 
 
+def default_modifier(valuestr):
+    return valuestr
+
+
 def duration(valuestr):
     """ Convert valuestr such as 1d, 1h, 1m, 1s to an integer. """
     try:
