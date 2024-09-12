@@ -9,7 +9,7 @@ pip install git+https://github.com/pkkid/django-searchquery.git
 ## Usage
 Once you define the searchable columns, the user will be able to search the 
 result set using a friendly syntax. The module will parse the search string and
-return a Djazngo Query object.
+return a Django Query object.
 
 ```python
 from django_searchquery import searchfields as sf
