@@ -17,6 +17,7 @@ class Search:
         self.fields = {f.search_key.lower():f for f in fields}      # Field objects to filter on
         self.allow_partial_fieldnames = allow_partial_fieldnames    # Allow specifying partial field names
         self._searchstr = ''    # Last searchstr used
+        self._qobject = None    # Q object from last search
         self._order_by = []     # Order By args from last search
         self._error = None      # Error message from last search
     
@@ -63,13 +64,15 @@ class Search:
             elif isinstance(node, (parser.UnaryOperator, parser.BinaryOperator)):
                 queryfunc = getattr(self, f'_qs_{node.operator}')
                 qobjects.append(queryfunc(node, exclude))
-            return utils.merge_qobjects(qobjects)
+            self._qobject = utils.merge_qobjects(qobjects)
+            return self._qobject
         except ParseException as err:
             self._error = f"Unknown symbol '{err.line[err.loc]}' at position {err.loc}"
         except SearchError as err:
             self._error = str(err)
         # return no results
-        return NORESULTS
+        self._qobject = NORESULTS
+        return self._qobject
         
     def _get_field(self, searchkey):
         """ Returns the field object for the given searchkey. """

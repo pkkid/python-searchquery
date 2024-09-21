@@ -1,5 +1,6 @@
 # encoding: utf-8
 import calendar, re
+from django.db.models import Q
 from functools import reduce
 
 # Valid month names january-december + jan-dec + sept
@@ -189,3 +190,15 @@ def parent_searchfields(searchfields, search_key_prefix='', search_key_suffix=''
             desc=sf.desc, mod=sf.mod, modargs=sf.modargs)
         newsearchfields.append(newsearchfield)
     return newsearchfields
+
+
+def qobject_to_dict(qobj):
+    if not isinstance(qobj, Q):
+        raise ValueError('Input must be a Q object')
+    result = {'connector':qobj.connector, 'negated':qobj.negated, 'children':[]}
+    for child in qobj.children:
+        if isinstance(child, Q):
+            result['children'].append(qobject_to_dict(child))
+            continue
+        result['children'].append(child)
+    return result
