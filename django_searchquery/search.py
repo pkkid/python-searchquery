@@ -114,7 +114,6 @@ class Search:
         qobjects = []
         exclude = not exclude
         for childnode in node.operands:
-            print(childnode)
             qobjects.append(self._get_qobject(childnode, exclude))
         return reduce(lambda x,y: x | y, qobjects)
     
