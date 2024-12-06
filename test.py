@@ -20,10 +20,10 @@ import argparse, pytz, django
 from django.conf import settings
 from django.core.exceptions import EmptyResultSet
 from django.db import models
-from django_searchquery import modifiers as mods
-from django_searchquery.parser import BinaryOperator, UnaryOperator, SearchString
-from django_searchquery.search import Search
-from django_searchquery import searchfields as sf
+from searchquery import modifiers as mods
+from searchquery.parser import BinaryOperator, UnaryOperator, SearchString
+from searchquery.django import DjangoSearch
+from searchquery import searchfields as sf
 from pygments import formatters, highlight, lexers
 from pyparsing.exceptions import ParseException
 from pyparsing import ParseResults
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     cmdline.add_argument('-v', '--verbose', default=False, action='store_true', help='Show verbose output')
     opts = cmdline.parse_args()
     # Setup the Search object and get the queryset
-    search = Search(SEARCHFIELDS)
+    search = DjangoSearch(SEARCHFIELDS)
     results = search.get_queryset(Test.objects.all(), opts.query)
     # Show Verbose output if requested
     if opts.verbose:

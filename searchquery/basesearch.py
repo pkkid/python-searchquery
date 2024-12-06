@@ -1,6 +1,5 @@
 # encoding: utf-8
 import logging
-from django.db.models import Q
 from functools import reduce
 from pyparsing import ParseResults
 from pyparsing.exceptions import ParseException
@@ -8,10 +7,10 @@ from . import parser, searchfields, utils
 from .exceptions import SearchError
 log = logging.getLogger(__name__)
 
-NORESULTS = Q(pk__in=[])
 
-
-class Search:
+class BaseSearch:
+    NORESULTS = None    # Queryset will never have results; defined in subclass
+    NOOP = None         # Queryset that does nothing; defined in subclass
     
     def __init__(self, fields, allow_partial_fieldnames=True):
         self.fields = {f.search_key.lower():f for f in fields}      # Field objects to filter on
@@ -71,7 +70,7 @@ class Search:
         except SearchError as err:
             self._error = str(err)
         # return no results
-        self._qobject = NORESULTS
+        self._qobject = self.NORESULTS
         return self._qobject
         
     def _get_field(self, searchkey):
@@ -156,7 +155,7 @@ class Search:
             for field in numfields:
                 subquery = field.get_subquery(numvaluestr, ':', exclude)
                 qobjects.append(subquery)
-        return utils.merge_qobjects(qobjects, exclude) if qobjects else NORESULTS
+        return utils.merge_qobjects(qobjects, exclude) if qobjects else self.NORESULTS
     
     def _qs_orderby(self, node, exclude=False):
         """ Save the order_by arg to self.order_by. """
@@ -164,4 +163,4 @@ class Search:
         searchkey = node[1] if len(node) == 2 else node[0]
         field = self._get_field(searchkey)
         self._order_by.append(f'{desc}{field.model_field}')
-        return Q()
+        return self.NOOP
