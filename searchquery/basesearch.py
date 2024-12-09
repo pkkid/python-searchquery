@@ -3,7 +3,7 @@ import logging
 from functools import reduce
 from pyparsing import ParseResults
 from pyparsing.exceptions import ParseException
-from . import parser, searchfields, utils
+from . import parser, basesearchfields, utils
 from .exceptions import SearchError
 log = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ class BaseSearch:
         exclude = not exclude if len(node) == 2 else exclude
         valuestr = node[1] if len(node) == 2 else node[0]
         # Search string fields
-        strfields = (f for f in self.fields.values() if isinstance(f, searchfields.StrField))
+        strfields = (f for f in self.fields.values() if isinstance(f, basesearchfields.StrField))
         strfields = (f for f in strfields if f.generic is True)
         for field in strfields:
             subquery = field.get_subquery(valuestr, ':', exclude)
@@ -150,7 +150,7 @@ class BaseSearch:
         # Search all num fields (if applicable)
         if utils.is_number(valuestr):
             numvaluestr = ''.join(node)
-            numfields = (f for f in self.fields.values() if isinstance(f, searchfields.NumField))
+            numfields = (f for f in self.fields.values() if isinstance(f, basesearchfields.NumField))
             numfields = (f for f in numfields if f.generic)
             for field in numfields:
                 subquery = field.get_subquery(numvaluestr, ':', exclude)
