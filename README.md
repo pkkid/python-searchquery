@@ -1,18 +1,18 @@
 # django-querysearch
-Simple query search module for Django
+Simple query search module for Django or Sqlalchemy
 
 ## Installation
 ```
-pip install git+https://github.com/pkkid/django-searchquery.git
+pip install git+https://github.com/pkkid/python-searchquery.git
 ```
 
 ## Usage
 Once you define the searchable columns, the user will be able to search the 
 result set using a friendly syntax. The module will parse the search string and
-return a Django Query object.
+return a Query object.
 
 ```python
-from django_searchquery import searchfields as sf
+from searchquery import searchfields as sf
 from myapp.applications.models import Application
 
 SEARCH_FIELDS = [

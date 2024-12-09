@@ -1,5 +1,7 @@
 # encoding: utf-8
 import calendar, re
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from functools import reduce
 
 # Valid month names january-december + jan-dec + sept
@@ -112,6 +114,32 @@ def datestr_rdelta(valuestr):
         if is_month_num(s1) and is_day_num(s2) and is_year(s3) and delim in '/-': return DAY  # 01/01/2024
         if is_day_num(s1) and is_month_num(s2) and is_year(s3) and delim == '.': return DAY  # 01.01.2024
     return None
+
+
+def get_min_max_dates(valuestr, qvalue, tz=None):
+    """ Given a qvalue, return the min and max dates for the given timeframe. """
+    rdelta = datestr_rdelta(valuestr)  # valuestr?
+    now = datetime.now(tz)
+    if rdelta == YEAR:
+        mindate = clear_dt(qvalue, 'year')
+        maxdate = mindate + relativedelta(years=1)
+        return mindate, maxdate
+    if rdelta == MONTH:
+        mindate = clear_dt(qvalue, 'month')
+        if mindate > now:
+            mindate -= relativedelta(years=1)
+        maxdate = mindate + relativedelta(months=1)
+        return mindate, maxdate
+    if rdelta == WEEK:
+        mindate = qvalue - timedelta(days=(qvalue.weekday() + 1) % 7)
+        mindate = clear_dt(mindate, 'day')
+        maxdate = mindate + relativedelta(days=7)
+        return mindate, maxdate
+    if rdelta == DAY:
+        mindate = clear_dt(qvalue, 'day')
+        maxdate = mindate + timedelta(days=1)
+        return mindate, maxdate
+    return qvalue, None
 
 
 def is_day_num(valuestr):

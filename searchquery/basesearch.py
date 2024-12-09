@@ -3,7 +3,7 @@ import logging
 from functools import reduce
 from pyparsing import ParseResults
 from pyparsing.exceptions import ParseException
-from . import parser, basesearchfields, utils
+from . import modifiers, parser, utils
 from .exceptions import SearchError
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class BaseSearch:
         return result
     
     def _get_qobject(self, node=None, exclude=False):
-        """ Recursivly builds the django qobject. """
+        """ Recursivly builds the qobject. """
         try:
             qobjects = []
             if isinstance(node, str):
@@ -142,7 +142,7 @@ class BaseSearch:
         exclude = not exclude if len(node) == 2 else exclude
         valuestr = node[1] if len(node) == 2 else node[0]
         # Search string fields
-        strfields = (f for f in self.fields.values() if isinstance(f, basesearchfields.StrField))
+        strfields = (f for f in self.fields.values() if f.FIELD_TYPE == 'str')
         strfields = (f for f in strfields if f.generic is True)
         for field in strfields:
             subquery = field.get_subquery(valuestr, ':', exclude)
@@ -150,7 +150,7 @@ class BaseSearch:
         # Search all num fields (if applicable)
         if utils.is_number(valuestr):
             numvaluestr = ''.join(node)
-            numfields = (f for f in self.fields.values() if isinstance(f, basesearchfields.NumField))
+            numfields = (f for f in self.fields.values() if f.FIELDTYPE == 'num')
             numfields = (f for f in numfields if f.generic)
             for field in numfields:
                 subquery = field.get_subquery(numvaluestr, ':', exclude)
@@ -164,3 +164,33 @@ class BaseSearch:
         field = self._get_field(searchkey)
         self._order_by.append(f'{desc}{field.model_field}')
         return self.NOOP
+
+
+class BaseSearchField:
+    """ Abstract SearchField class. Don't use this directly. """
+    VALID_OPERATORS = ()
+    
+    def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
+        default_modifier = modifiers.default_modifier
+        self.search_key = search_key                    # Field string user should input
+        self.model_field = model_field or search_key    # Model field lookup (ex: account__first_name)
+        self.desc = desc                                # Human readable description
+        self.mod = mod or default_modifier              # Callback to modify search_value comparing
+        self.modargs = modargs or []                    # Additional args to pass to the modifier
+        self.generic = generic                          # Include this field non specific searches
+        
+    def __str__(self):
+        return f'<{self.__class__.__name__}:{self.model_field}>'
+
+    def get_qvalue(self, valuestr):
+        """ Returns value to be used in the query. """
+        if self.mod is None: return valuestr
+        return self.mod(valuestr, *self.modargs)
+
+    def get_subquery(self, valuestr, operator=':', exclude=False):
+        """ Returns list of subqueries for the given valuestr and operator. """
+        pass
+    
+    def get_subquery_none(self, valuestr, operator=':', exclude=False):
+        """ Returns the subquery for None value. """
+        pass

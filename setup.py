@@ -13,7 +13,7 @@ setup(
     description='Simple query search module for Django and SQLAlchemy',
     author='Michael Shepanski',
     author_email='michael.shepanski@gmail.com',
-    url='https://github.com/pkkid/django-searchquery',
+    url='https://github.com/pkkid/python-searchquery',
     packages=['searchquery'],
     install_requires=requirements,
     python_requires='>=3.7',

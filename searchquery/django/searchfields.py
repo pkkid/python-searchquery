@@ -1,19 +1,18 @@
 # encoding: utf-8
 import pytz
-from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db.models import Q
 from .. import modifiers, utils
 from ..exceptions import SearchError
-from .. import basesearchfields as bsf
+from ..basesearch import BaseSearchField
 
 OPERATORS = {'=':'__iexact', '>':'__gt', '>=':'__gte', '<=':'__lte', '<':'__lt', ':': '__icontains'}
 REVERSEOP = {'__gt':'__lte', '__gte':'__lt', '__lte':'__gt', '__lt':'__gte'}
 
 
-class SearchField(bsf.BaseSearchField):
+class DjangoSearchField(BaseSearchField):
     """ Abstract SearchField class. Don't use this directly. """
+    FIELD_TYPE = None
     VALID_OPERATORS = ()
     
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
@@ -51,7 +50,8 @@ class SearchField(bsf.BaseSearchField):
         return ~qobject if exclude else qobject
 
 
-class BoolField(SearchField):
+class BoolField(DjangoSearchField):
+    FIELD_TYPE = 'bool'
     VALID_OPERATORS = (':','=')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
@@ -68,7 +68,8 @@ class BoolField(SearchField):
         return ~qobject if exclude else qobject
 
 
-class DateField(SearchField):
+class DateField(DjangoSearchField):
+    FIELD_TYPE = 'date'
     VALID_OPERATORS = ('=', '>', '>=', '<=', '<')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None):
@@ -86,7 +87,8 @@ class DateField(SearchField):
         if utils.is_none(valuestr):
             return self.get_subquery_none(valuestr, operator, exclude)
         kwargs = {}
-        mindate, maxdate = self._get_min_max_dates(valuestr)
+        qvalue = self.get_qvalue(valuestr)
+        mindate, maxdate = utils.get_min_max_dates(valuestr, qvalue, self.modargs[0])
         if mindate is None or maxdate is None:
             raise SearchError(f"Unknown date format '{valuestr}'.")
         if operator in ('>=', '>'):
@@ -104,33 +106,9 @@ class DateField(SearchField):
             qobjects.append(qobject)
         return utils.merge_qobjects(qobjects, not exclude)
 
-    def _get_min_max_dates(self, valuestr):
-        qvalue = self.get_qvalue(valuestr)
-        rdelta = utils.datestr_rdelta(valuestr)
-        now = datetime.now(self.modargs[0])  # modargs[0]=tz
-        if rdelta == utils.YEAR:
-            mindate = utils.clear_dt(qvalue, 'year')
-            maxdate = mindate + relativedelta(years=1)
-            return mindate, maxdate
-        if rdelta == utils.MONTH:
-            mindate = utils.clear_dt(qvalue, 'month')
-            if mindate > now:
-                mindate -= relativedelta(years=1)
-            maxdate = mindate + relativedelta(months=1)
-            return mindate, maxdate
-        if rdelta == utils.WEEK:
-            mindate = qvalue - timedelta(days=(qvalue.weekday() + 1) % 7)
-            mindate = utils.clear_dt(mindate, 'day')
-            maxdate = mindate + relativedelta(days=7)
-            return mindate, maxdate
-        if rdelta == utils.DAY:
-            mindate = utils.clear_dt(qvalue, 'day')
-            maxdate = mindate + timedelta(days=1)
-            return mindate, maxdate
-        return qvalue, None
 
-
-class NumField(SearchField):
+class NumField(DjangoSearchField):
+    FIELD_TYPE = 'num'
     VALID_OPERATORS = ('=', '>', '>=', '<=', '<', ':')
     
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
@@ -165,7 +143,8 @@ class NumField(SearchField):
         return qobject
 
 
-class StrField(SearchField):
+class StrField(DjangoSearchField):
+    FIELD_TYPE = 'str'
     VALID_OPERATORS = ('=', ':')
 
     def __init__(self, search_key, model_field=None, desc=None, mod=None, modargs=None, generic=False):
