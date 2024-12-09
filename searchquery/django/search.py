@@ -3,7 +3,7 @@ from django.db.models import Q
 from ..basesearch import BaseSearch
 
 
-class Search(BaseSearch):
+class DjangoSearch(BaseSearch):
     NORESULTS = Q(pk__in=[])
     NOOP = Q()
 
